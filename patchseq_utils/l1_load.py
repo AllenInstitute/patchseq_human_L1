@@ -1,8 +1,9 @@
 import pandas as pd
 from pathlib import Path
 from pandas.api.types import CategoricalDtype
-from . import shiny
+from . import shiny, lims
 from .util import *
+
 
 figdir = Path('/allen/programs/celltypes/workgroups/humancelltypes/tom/figures/talk/')
 datadir = Path("/home/tom.chartrand/projects/data/u01/")
@@ -105,3 +106,18 @@ mouse_df = (mouse_df.join(mouse_ephys)
             .join(ccf_depth)
             .join(mouse_morph))
 
+
+def get_shiny(species, nms_pass=True):
+    shiny_df = shiny.load_shiny_data(species, drop_offpipeline=False, nms_pass=nms_pass)
+    shiny_df = shiny_df.loc[lambda df: (df.broad_class.str.contains('GABAergic'))]
+
+    lims_df = lims.get_cells_df(cells_list=shiny_df.index)
+    lims_df.layer = lims_df.layer.apply(lambda x: x.split(' ')[-1] if x else x)
+    shiny_df = (shiny_df
+                .join(lims_df, rsuffix='_lims')
+                .assign(species=species))
+    if species=='human':
+        shiny_df[cluster] = shiny_df['topLeaf'].map(shorten_name)
+    else:
+        shiny_df[cluster] = shiny_df['topLeaf']
+    return shiny_df

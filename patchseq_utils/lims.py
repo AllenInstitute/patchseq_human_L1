@@ -65,7 +65,6 @@ def get_sweeps(cell_id, sweep_type=None, description=None, passed_only=False, sp
     sql = "SELECT sw.sweep_number " + base_query
     return query(sql)
 
-@staticmethod
 def sweep_filter(cell_id, sweep_type=None, description=None, passed_only=False, spiking=None, depolarizing=None):
     sql = """
         FROM ephys_sweeps sw

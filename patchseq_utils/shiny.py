@@ -35,18 +35,6 @@ def _load_shiny_data(species=None, directory=None, csv_path=None, feather_path=N
         assert shiny_df['spec_id'].is_unique
         shiny_df.index = shiny_df['spec_id'].astype(int)
 
-    if directory is not None:
-        path = os.path.join(directory, 'tsne.feather')
-        if os.path.exists(path):
-            tsne_df = pd.read_feather(path).set_index('sample_id')
-            shiny_df = shiny_df.join(tsne_df, on='sample_id')
-
-    # add a few helpful columns for the human data
-    if species=='human':
-        shiny_df["leaf_matched_seurat"] = shiny_df.seurat_cluster == shiny_df.topLeaf
-        shiny_df["leaf_mapped"] = shiny_df.topLeaf == shiny_df.cluster
-        shiny_df["L23_depth_normalized"] = shiny_df.L23_cell_depth / shiny_df.L23_total_thickness
-
     return shiny_df
 
 def shiny_directory(species):

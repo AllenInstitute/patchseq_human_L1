@@ -56,7 +56,7 @@ def plot_sag(dataset, sweeps, n_max=3, scalebar=False, offset=0, **kwargs):
     
 def plot_hero(dataset, sweeps, n_max=1, scalebar=False, offset=0, **kwargs):
     sweeps = sweeps.query("stimulus_amplitude > 0 & spiking")
-    sweeps = sweeps.sort_values("stimulus_amplitude", ascending=False)
+    sweeps = sweeps.sort_values("stimulus_amplitude", ascending=True)
     amp = sweeps["stimulus_amplitude"]
     # hero sweep
     sweeps = sweeps[(amp > amp.min() + 39) & (amp < amp.min() + 61)]

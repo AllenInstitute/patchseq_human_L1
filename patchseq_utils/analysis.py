@@ -1,3 +1,4 @@
+from tkinter import N
 import pandas as pd
 import numpy as np
 import seaborn as sns
@@ -88,7 +89,7 @@ def plot_fit(data, feature, formula, x=None, cluster='cluster', ax=None, legend=
     sns.despine()
     return out_dict
 
-def plot_sig_bars(pvals, pairs_idx, cutoff=0.05, label='stars', ax=None, y0=None):
+def plot_sig_bars(pvals, pairs_idx, cutoff=0.05, bar=True, label='stars', ax=None, y0=None):
     ax = ax or plt.gca()
     ylim = ax.get_ylim()
     pairs_sig = np.flatnonzero(np.array(pvals)<cutoff)
@@ -98,23 +99,25 @@ def plot_sig_bars(pvals, pairs_idx, cutoff=0.05, label='stars', ax=None, y0=None
     dy = 0.04*(ylim[1]-ylim[0]) # use 4% of y-axis range
     yvals = y0 + dy*np.arange(1, n+1)
     for i, pair in enumerate(pairs_sig):
-        plot_sig_bar(pvals[pair], yvals[i], pairs_idx[pair], label=label, ax=ax)
+        plot_sig_bar(pvals[pair], yvals[i], pairs_idx[pair], bar=bar, label=label, ax=ax)
 
-def plot_sig_bar(pval, y, x_pair, label='stars', ax=None):
+def plot_sig_bar(pval, y, x_pair, bar=True, label='stars', ax=None):
     ax = ax or plt.gca()
-    ax.plot(x_pair, [y, y], 'grey')
+    if bar:
+        ax.plot(x_pair, [y, y], 'grey')
     if label=='stars':
         text = np.choose(np.searchsorted([1e-3, 1e-2, 5e-2], pval), ['***','**','*',''])
     elif label=='pval':
         text = "p={p:.2}".format(p=pval)
     else:
         text = ''
-    ax.text(np.mean(x_pair), y, text, horizontalalignment='center', verticalalignment='bottom')
+    ax.annotate(text, xy=(np.mean(x_pair), y), xytext=(0, 2), textcoords='offset points',
+        horizontalalignment='center', verticalalignment='center')
 
 def pairwise_mw(data, var, group, group_vals=None, pairs='all'):
     data = data[~data[var].isna()]
     group_vals = group_vals or data[group].sort_values().unique().tolist()
-    if pairs is 'all':
+    if pairs == 'all':
         pairs = list(combinations(group_vals, 2))
     pvals = []
     pairs_idx = []
@@ -136,42 +139,26 @@ def outline_boxplot(ax):
     for i,artist in enumerate(ax.artists):
         # Set the linecolor on the artist to the facecolor, and set the facecolor to None
         col = artist.get_facecolor()
-        artist.set_edgecolor(col)
-        artist.set_facecolor('None')
+        if 'col' != 'None':
+            artist.set_edgecolor(col)
+            artist.set_facecolor('None')
 
-        # Each box has 5(?) associated Line2D objects (to make the whiskers, fliers, etc.)
-        # Loop over them here, and use the same colour as above
-        n=5
-        for j in range(i*n,i*n+n):
-            line = ax.lines[j]
-            line.set_color(col)
-            line.set_mfc(col)
-            line.set_mec(col)
+            # Each box has 5(?) associated Line2D objects (to make the whiskers, fliers, etc.)
+            # Loop over them here, and use the same colour as above
+            n=5
+            for j in range(i*n,i*n+n):
+                line = ax.lines[j]
+                line.set_color(col)
+                line.set_mfc(col)
+                line.set_mec(col)
             
-def plot_boxplot_multiple(data, features, x='cluster', labels=None, horizontal=False, figsize=(4,8),
-                            palette=None, strip_width=0.2, pairs_sets=[], cutoff=0.05, 
-                             invert_y=False, label_yaxis=False, pad_title=0, title_loc='right', label_counts=True,
-                             highlight=None, **kwargs
-                            ):
-    n = len(features)
-    labels = labels or features
-    if horizontal:
-        fig, axes = plt.subplots(1,n, figsize=figsize, sharex=True)
-    else:    
-        fig, axes = plt.subplots(n,1, figsize=figsize, sharex=True)
-        
-    for i, ax in enumerate(axes):
-        plot_box_cluster_feature(data, y=features[i], x=x, label=labels[i], ax=ax,
-                    palette=palette, strip_width=strip_width, pairs_sets=pairs_sets, cutoff=cutoff, 
-                    invert_y=invert_y, label_yaxis=label_yaxis, pad_title=pad_title, title_loc=title_loc,
-                    label_counts=label_counts, highlight=highlight, **kwargs
-                    )
-
 def plot_box_cluster_feature(data, y, x='cluster', x_fine=None, label=None, ax=None,
                     palette=None, palette_fine=None, strip_width=0.2, 
+                    drop_box=False,
                     test=pairwise_mw, pairs_sets=[], cutoff=0.05, 
                     invert_y=False, label_yaxis=False, pad_title=0, title_loc='right',
-                    label_counts=True, label_color=False, size=3, highlight=None, **kwargs
+                    label_counts=True, label_color=False, size=3, highlight=None, 
+                    legend=None, **kwargs
                     ):
     data = data.dropna(subset=[x,y]).copy()
     if not hasattr(data[x], 'cat'):
@@ -189,11 +176,14 @@ def plot_box_cluster_feature(data, y, x='cluster', x_fine=None, label=None, ax=N
         for i, (subclass, types) in enumerate(subgroups.items()):
             x_key.update({x: i+(j-(len(types)-1)/2)*(2*strip_width/len(types)) for j, x in enumerate(types)})
         data['x_fine'] = data[x_fine].map(x_key)
+        # square size to match stripplot behavior
         sns.scatterplot(data=data, x='x_fine', y=y, hue=x_fine, palette=palette_fine,
-                      ax=ax, size=size, alpha=0.7, **kwargs)
+                      ax=ax, s=size**2, alpha=0.7, legend=legend, **kwargs)
     else:
-        sns.stripplot(data=data, x=x, y=y, palette=palette, ax=ax, jitter=strip_width, size=size, alpha=0.7, **kwargs)
-    sns.boxplot(data=data, x=x, y=y, palette=palette, ax=ax, showfliers=False)
+        sns.stripplot(data=data, x=x, y=y, palette=palette, ax=ax, 
+                      jitter=strip_width, s=size, alpha=0.7, **kwargs)
+    data_box = data.loc[lambda df: df[x]!=drop_box] if drop_box else data
+    sns.boxplot(data=data_box, x=x, y=y, palette=palette, ax=ax, showfliers=False)
     if highlight is not None:
         sns.stripplot(data=data.loc[data.index.intersection(highlight)], 
                       x=x, y=y, palette=palette, ax=ax, jitter=strip_width, size=size*4, marker='X', **kwargs)
@@ -229,6 +219,19 @@ def plot_box_cluster_feature(data, y, x='cluster', x_fine=None, label=None, ax=N
     if invert_y:
         ax.invert_yaxis()
 
+def plot_boxplot_multiple(data, features, x='cluster', labels=None, horizontal=False, figsize=(4,8),
+                             plot_function=plot_box_cluster_feature, **kwargs
+                            ):
+    n = len(features)
+    labels = labels or features
+    if horizontal:
+        fig, axes = plt.subplots(1,n, figsize=figsize, sharey=True)
+    else:    
+        fig, axes = plt.subplots(n,1, figsize=figsize, sharex=True)
+        
+    for i, ax in enumerate(axes):
+        plot_function(data, y=features[i], x=x, label=labels[i], ax=ax, **kwargs)
+        
 def run_cluster_anova(df, features, cluster_var='cluster', pval='pval_cluster', cov_type='HC3', fdr_method='fdr_bh',):
     df = df.copy()
     df['cluster'] = df[cluster_var]
@@ -244,7 +247,7 @@ def run_cluster_anova(df, features, cluster_var='cluster', pval='pval_cluster', 
     )
     return results
 
-def plot_feature_effect_sizes(results, pval='pval_cluster', val='rsquared', cov_type='HC3', ylabels=None, 
+def plot_feature_effect_sizes(results, pval='pval_cluster', val='rsquared', ylabels=None, 
                                figsize=(1.5,8), nshow=20, sort=True):
     if sort:
         results = results.sort_values(val, ascending=False)
@@ -277,6 +280,45 @@ def plot_feature_effect_sizes(results, pval='pval_cluster', val='rsquared', cov_
             _y = p.get_y() + p.get_height()
             ax.text(_x, _y, annot, ha="left")
 
+from scipy.stats import kruskal
+from statsmodels.stats.multitest import multipletests
+import scikit_posthocs as skp
+
+def dunn_results(data, group_col, val_col, cutoff=0.05):
+    groups = data.dropna(subset=[val_col, group_col]).groupby(group_col)[val_col].apply(list)
+    pvals = skp.posthoc_dunn(groups.values, p_adjust='fdr_bh')
+    group_names = data[group_col].unique()
+    indices = np.triu_indices_from(pvals, k=1)
+    pairs = pd.Series(pvals.values[indices], index=[*zip(*indices)])
+    sig_pairs = pairs.loc[lambda x: x<cutoff]
+    sig_list = [' - '.join(group_names[i] for i in pair) for pair in sig_pairs.index]
+    indices = [''.join(str(i) for i in pair) for pair in sig_pairs.index]
+    return sig_list, indices, len(sig_list)
+
+def run_kw_dunn(data, features, group_col, fdr_method='fdr_bh', posthoc=True, cutoff=0.05):
+#     features = [x for x in features if data.groupby(group_col)[x].var().min() > 0]
+    records = []
+    pval = 'pval_cluster'
+    k = len(data[group_col].unique())
+    for f in features:
+        df = data.dropna(subset=[f, group_col])
+        n = len(df)
+        groups = df.groupby(group_col, observed=True)[f].apply(list)
+        rec = dict(feature=f)
+        rec['KW_H'], rec[pval] = kruskal(*groups.values)
+        rec['rsquared'] = (rec['KW_H'] - k + 1)/(n - k)
+        rec['epsilon2'] = rec['KW_H']/(n-1)
+        records.append(rec)
+    results = pd.DataFrame.from_records(records, index='feature')
+
+    if fdr_method is not None:
+        results[pval] = results[pval].pipe(lambda col: multipletests(col, method=fdr_method)[1])
+    if posthoc:
+        results = results.assign(pairs=None, ipairs=None, pair_count=None)
+        for f in features:
+            if results.loc[f,pval] < cutoff:
+                results.loc[f, ['pairs', 'ipairs', 'pair_count']] = dunn_results(data, group_col, f)
+    return results.sort_values(pval)
 
 def run_anova_pairs(mouse_df, human_df, features, cluster='cluster', cov_type='HC3', fdr_method='fdr_bh',):
     pval = f'pval_{cluster}'
@@ -305,36 +347,48 @@ def run_anova_pairs(mouse_df, human_df, features, cluster='cluster', cov_type='H
         )
     return results
 
-import warnings
-def plot_cluster_anova_species_bar(mouse_df, human_df, features, pval='pval_cluster', cov_type='HC3', ylabels=None, 
-                               figsize=(1.5,8), nshow=20, palette=None):
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        results = run_anova_pairs(mouse_df, human_df, features, cov_type=cov_type)
+def select_distinct(ranked, corr, nfeat=10, threshold=0.8):
+    distinct_features = []
+    for x in ranked:
+        if len(distinct_features)==nfeat:
+            return distinct_features
+        for y in distinct_features:
+            if np.abs(corr.loc[x,y]) > threshold:
+                break
+        else:
+            distinct_features.append(x)
+    return distinct_features
 
-    data = results.loc[:,pval]
-    stars = data.iloc[:nshow].apply(lambda x: pd.cut(x, [0, 0.001, 0.01, 0.05, 1], labels=['***','**','*',''])).astype(str).values
+def compile_feature_effects_comparison(results_list, group_list, rank='max', effect='rsquared', pval='pval_cluster',
+                                        corr_filter=None, nfeat=10, corr_thresh=0.8):
+    results = pd.concat(results_list, keys=group_list, axis=1).swaplevel(axis=1)
+    results[rank] = results[effect].agg(rank, axis=1)
+    results['diff'] = results[(effect,group_list[0])] - results[(effect,group_list[1])]
+    ranked_features = results.sort_values(rank, ascending=False).index
+    if corr_filter is not None:
+        ranked_features = select_distinct(ranked_features, corr_filter, nfeat=nfeat, threshold=corr_thresh)
+    else:
+        ranked_features = ranked_features[:nfeat]
+    return results.loc[ranked_features].sort_values('diff', ascending=False)
 
-
+def plot_feature_effects_comparison_barplot(results, pval='pval_cluster', val='rsquared', ylabels=None,
+                                            figsize=(1.5,8), palette=None, nshow=None):
     fig, ax = plt.subplots(figsize=figsize)
-    bardata = results.iloc[:nshow].loc[:,'rsquared'].reset_index().melt(id_vars=['feature'])
-    
-    palette = palette or {
-        # 'human': '#4d8000',
-        # 'mouse': '#a84920'
-        'human': '#6f2af7',
-        'mouse': '#3db516'
-    }
+    results.index.name = 'feature'
+    data = results.loc[:,pval]
+    stars = data.apply(lambda x: pd.cut(x, [0, 0.001, 0.01, 0.05, 1], labels=['***','**','*',''])).astype(str).values
+
+    bardata = results.loc[:,val].reset_index().melt(id_vars=['feature'])
+
     sns.barplot(data=bardata, y='feature', x='value', hue='variable', palette=palette)
     sns.despine()
     if ylabels is not None:
         ax.set_yticklabels([ylabels[label.get_text()] for label in ax.get_yticklabels()])
     ax.set_ylabel(None)
-    ax.set_xlabel(None)
-    ax.set_title('Cluster ANOVA $\eta^2$')
+    ax.set_xlabel('$\eta^2$')
     ax.get_legend().remove()
-    
-    nfeat = min(nshow, len(ylabels))
+
+    nfeat = nshow or len(results)
     for i, p in enumerate(ax.patches):
         # Set the linecolor on the artist to the facecolor, and set the facecolor to None
         ifeat = i % nfeat
@@ -348,9 +402,8 @@ def plot_cluster_anova_species_bar(mouse_df, human_df, features, pval='pval_clus
             space = 0.005
             _x = p.get_x() + p.get_width() + float(space)
             _y = p.get_y() + p.get_height()
-            ax.text(_x, _y, annot, ha="left")
-
-
+    #         ax.text(_x, _y, annot, ha="left")
+    
 from . import classification as ac
 from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.model_selection import cross_val_score, RepeatedStratifiedKFold
@@ -478,7 +531,7 @@ def plot_spearman(data, x, y, smooth=True, hue=None, palette=None, ax=None):
         verticalalignment='top', horizontalalignment='center')
     sns.despine()
 
-def run_species_subclass_stats(data, features, compare='species', group_var='homology_type', groups=None, rank_transform=True,
+def run_species_subclass_stats(data, features, compare='species', group_var='homology_type', groups=None, rank_transform=False,
                                cutoff=0.05, fdr_anova='fdr_bh', fdr_subgroup=None, anova_type=1):
     if groups is None:
         groups = data[group_var].unique()
@@ -492,11 +545,13 @@ def run_species_subclass_stats(data, features, compare='species', group_var='hom
     
     cols = [f'eta_p_{compare}', f'pval_{compare}', f"pval_{compare}:{group_var}", 'rsquared', 'interaction']
     interaction_features = results.loc[results.interaction].index
-    interaction_results = subgroup_comparisons(data, interaction_features, group_var, groups, compare, 
-                                               cutoff=cutoff, fdr_method=fdr_subgroup)
+    interaction_results = subgroup_comparisons(data, interaction_features, group_var, compare, 
+                                               groups=groups, cutoff=cutoff, fdr_method=fdr_subgroup)
     return results[cols].join(interaction_results)
 
-def subgroup_comparisons(df, features, group_var, groups, compare, fdr_method=None, cutoff=0.05):
+def subgroup_comparisons(df, features, group_var, compare, groups=None, fdr_method=None, cutoff=0.05):
+    if groups is None:
+        groups = df[group_var].unique()
     records = []
     for feature in features:
         pvals = {}
