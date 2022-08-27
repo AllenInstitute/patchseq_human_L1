@@ -1,3 +1,4 @@
+from re import U
 from tkinter import N
 import pandas as pd
 import numpy as np
@@ -114,25 +115,12 @@ def plot_sig_bar(pval, y, x_pair, bar=True, label='stars', ax=None):
     ax.annotate(text, xy=(np.mean(x_pair), y), xytext=(0, 2), textcoords='offset points',
         horizontalalignment='center', verticalalignment='center')
 
-def pairwise_mw(data, var, group, group_vals=None, pairs='all'):
-    data = data[~data[var].isna()]
+def plot_test_bars(data, var, group, test='mannwhitney', group_vals=None, pairs='all', cutoff=0.05, label='stars', ax=None, y0=None):
     group_vals = group_vals or data[group].sort_values().unique().tolist()
-    if pairs == 'all':
-        pairs = list(combinations(group_vals, 2))
-    pvals = []
-    pairs_idx = []
-    groups = data.groupby(group)[var]
-    for pair in pairs:
-        u, p = mannwhitneyu(groups.get_group(pair[0]), groups.get_group(pair[1]), alternative='two-sided')
-        pvals.append(p)
-        pairs_idx.append([group_vals.index(pair[0]), group_vals.index(pair[1])])
-    return pairs, pairs_idx, pvals
-
-def plot_test_bars(data, var, group, test=pairwise_mw, group_vals=None, pairs='all', cutoff=0.05, label='stars', ax=None, y0=None):
-    group_vals = group_vals or data[group].sort_values().unique().tolist()
-    pairs_list, pairs_idx, pvals = pairwise_mw(data, var, group, group_vals, pairs)
-    pvals = multipletests(pvals, method='fdr_bh')[1]
-    y0 = data[ data[group].isin(set.union(*map(set, pairs_list))) ][var].max()
+    pvals, pairs_idx, pairs_names = posthoc_results(data, group, var, group_vals, pairs=pairs, method=test)
+    # plot_data = data[ data[group].isin(set.union(*map(set, pairs_list)))]
+    plot_data = data[data[group].isin(group_vals)]
+    y0 = plot_data[var].max()
     plot_sig_bars(pvals, pairs_idx, cutoff, label=label, ax=ax, y0=y0)
     
 def outline_boxplot(ax):
@@ -155,7 +143,7 @@ def outline_boxplot(ax):
 def plot_box_cluster_feature(data, y, x='cluster', x_fine=None, label=None, ax=None,
                     palette=None, palette_fine=None, strip_width=0.2, 
                     drop_box=False,
-                    test=pairwise_mw, pairs_sets=[], cutoff=0.05, 
+                    test='mannwhitney', pairs_sets=[], cutoff=0.05, 
                     invert_y=False, label_yaxis=False, pad_title=0, title_loc='right',
                     label_counts=True, label_color=False, size=3, highlight=None, 
                     legend=None, **kwargs
@@ -212,7 +200,8 @@ def plot_box_cluster_feature(data, y, x='cluster', x_fine=None, label=None, ax=N
         ax.set_ylim(0, None, auto=True)
         
     for pairs in pairs_sets:
-        plot_test_bars(data, y, x, group_vals=None, pairs=pairs, ax=ax, cutoff=cutoff, label=None)
+        plot_test_bars(data, y, x, test=test, group_vals=None, pairs=pairs, 
+                       ax=ax, cutoff=cutoff, label=None)
         
     if data[y].min()>0:
         ax.set_ylim(0, None, auto=True)
@@ -284,18 +273,33 @@ from scipy.stats import kruskal
 from statsmodels.stats.multitest import multipletests
 import scikit_posthocs as skp
 
-def dunn_results(data, group_col, val_col, cutoff=0.05):
-    groups = data.dropna(subset=[val_col, group_col]).groupby(group_col)[val_col].apply(list)
-    pvals = skp.posthoc_dunn(groups.values, p_adjust='fdr_bh')
-    group_names = data[group_col].unique()
-    indices = np.triu_indices_from(pvals, k=1)
-    pairs = pd.Series(pvals.values[indices], index=[*zip(*indices)])
-    sig_pairs = pairs.loc[lambda x: x<cutoff]
-    sig_list = [' - '.join(group_names[i] for i in pair) for pair in sig_pairs.index]
-    indices = [''.join(str(i) for i in pair) for pair in sig_pairs.index]
-    return sig_list, indices, len(sig_list)
+def posthoc_results(data, group_col, val_col, group_vals=None, p_adjust=None, cutoff=0.05,
+                 method='dunn', pairs='all'):
+    fcn = getattr(skp, f"posthoc_{method}")
+    if group_vals is not None:
+        data = data[data[group_col].isin(group_vals)]
+    else:
+        group_vals = data[group_col].sort_values().unique().tolist()
+    # groups = data.dropna(subset=[val_col, group_col]).groupby(group_col)[val_col].apply(list)
+    pvals_df = fcn(data.dropna(subset=[val_col, group_col]),
+                   val_col, group_col, p_adjust=None)
+    stacked = pvals_df.stack()
+    if pairs=='all':
+        pairs = list(combinations(group_vals, 2))
+        # indices = np.triu_indices(len(group_vals), k=1)
+        # pvals = pvals_df.values[indices]
+        # index = [*zip(*indices)]
+    pvals = stacked[pairs].values
+    nums = {name: i for i, name in enumerate(group_vals)}
+    index = [(nums[pair[0]], nums[pair[1]]) for pair in pairs]
+    if p_adjust is not None:
+        pvals = multipletests(pvals, method=p_adjust)[1]
+    pairs = pd.DataFrame(dict(pvals=pvals, ind=index, names=pairs))
+    sig = pairs.loc[lambda df: df.pvals<cutoff]
+    # sig_list = [' - '.join(group_vals[i] for i in pair) for pair in sig_pairs.index]
+    return sig.pvals.values, sig.ind.values, sig.names.values
 
-def run_kw_dunn(data, features, group_col, fdr_method='fdr_bh', posthoc=True, cutoff=0.05):
+def run_kw_dunn(data, features, group_col, fdr_method='fdr_bh', posthoc='dunn', cutoff=0.05):
 #     features = [x for x in features if data.groupby(group_col)[x].var().min() > 0]
     records = []
     pval = 'pval_cluster'
@@ -317,7 +321,9 @@ def run_kw_dunn(data, features, group_col, fdr_method='fdr_bh', posthoc=True, cu
         results = results.assign(pairs=None, ipairs=None, pair_count=None)
         for f in features:
             if results.loc[f,pval] < cutoff:
-                results.loc[f, ['pairs', 'ipairs', 'pair_count']] = dunn_results(data, group_col, f)
+                pvals, index, names = posthoc_results(data, group_col, f, p_adjust='fdr_bh')
+                str_index = [''.join(str(i) for i in pair) for pair in index]
+                results.loc[f, ['pairs', 'ipairs', 'pair_count']] = names, str_index, len(pvals)
     return results.sort_values(pval)
 
 def run_anova_pairs(mouse_df, human_df, features, cluster='cluster', cov_type='HC3', fdr_method='fdr_bh',):
@@ -436,7 +442,6 @@ def plot_cv_cm(pipeline, X, y, scoring=None, cv=RepeatedStratifiedKFold(), label
     cb.set_label("Fraction of row")
     return cm
 
-from statsmodels.stats import multitest
 def run_regressions(df, features, variable, pval=None, cov_type='HC3', fdr_method='fdr_bh', pretty_format=False):
     fdr_method='fdr_bh'
     
