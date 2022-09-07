@@ -1,5 +1,3 @@
-from re import U
-from tkinter import N
 import pandas as pd
 import numpy as np
 import seaborn as sns
@@ -7,7 +5,6 @@ import matplotlib.pyplot as plt
 from scipy.stats import mannwhitneyu
 from itertools import combinations
 import statsmodels.formula.api as smf
-import statsmodels.api as sm
 from statsmodels.stats.multitest import multipletests
 from statsmodels.stats.anova import anova_lm
 
