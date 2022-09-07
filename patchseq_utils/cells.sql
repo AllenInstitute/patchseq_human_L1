@@ -29,6 +29,7 @@ err.id AS err_id,
 nwb.storage_directory || nwb.filename AS nwb_path,
 nwb.ftype as nwb_type,
 nr.reconstruction_tag,
+nr.reconstruction_type,
 nr.storage_directory || nr.filename AS swc_path
 FROM specimens sp
 LEFT JOIN ephys_roi_results err ON sp.ephys_roi_result_id = err.id
@@ -45,11 +46,13 @@ LEFT JOIN neuronal_models nm ON sp.id = nm.specimen_id
 LEFT JOIN
 (
     SELECT DISTINCT ON (nr.specimen_id)
-    nr.specimen_id, f.storage_directory, f.filename, rt.name AS reconstruction_tag FROM 
-    neuron_reconstructions nr 
+    nr.specimen_id, f.storage_directory, f.filename, rt.name AS reconstruction_tag,
+    nrt.name as reconstruction_type
+    FROM neuron_reconstructions nr 
     JOIN well_known_files f ON nr.id = f.attachable_id 
     LEFT JOIN neuron_reconstruction_tags_neuron_reconstructions rtr ON rtr.neuron_reconstruction_id = nr.id
     LEFT JOIN neuron_reconstruction_tags rt on rtr.neuron_reconstruction_tag_id = rt.id
+    LEFT JOIN reconstruction_types nrt on nr.reconstruction_type_id = nrt.id
     WHERE f.well_known_file_type_id = 303941301 --swc
     AND (rt.name != 'dendrite-only' OR rt.name IS NULL)
     AND NOT nr.superseded

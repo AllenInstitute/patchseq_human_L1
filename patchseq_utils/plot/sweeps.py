@@ -65,12 +65,15 @@ def plot_hero(dataset, sweeps, n_max=1, scalebar=False, offset=0, **kwargs):
     sweepset = dataset.sweep_set(sweeps["sweep_number"].values[:n_max])
     plot_sweeps_thumb(sweepset, scalebar=scalebar, offset=offset, **kwargs)
 
-def plot_rheo(dataset, sweeps, scalebar=False, offset=0, **kwargs):
+def plot_rheo(dataset, sweeps, scalebar=False, offset=0, plot_peri=False, **kwargs):
     sweeps = sweeps.query("stimulus_amplitude > 0")
     sweeps = sweeps.sort_values("stimulus_amplitude", ascending=True)
     if sweeps["spiking"].sum() > 0:
         rheo_i = sweeps.index.get_loc(sweeps[sweeps["spiking"]].index[0])
-        numbers = sweeps["sweep_number"].values[max(rheo_i-1, 0):rheo_i+1]
+        if plot_peri:
+            numbers = sweeps["sweep_number"].values[max(rheo_i-1, 0):rheo_i+1]
+        else:
+            numbers = [sweeps["sweep_number"].values[rheo_i]]
         sweepset = dataset.sweep_set(numbers)
     elif len(sweeps) > 0:
         # plot highest amp sweep
@@ -80,33 +83,36 @@ def plot_rheo(dataset, sweeps, scalebar=False, offset=0, **kwargs):
         
     plot_sweeps_thumb(sweepset, scalebar=scalebar, offset=offset, **kwargs)
 
-def plot_sweep_panel(dataset, sweeps, scalebar=False, figsize=(4,4), ax=None, **args):
+def plot_sweep_panel(dataset, sweeps, scalebar=False, plot_peri=False, figsize=(4,4), ax=None, **args):
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
     # ax.set_prop_cycle('color',plt.cm.cool(np.linspace(0,1,4)))
     ax.set_prop_cycle('alpha',np.linspace(1,0.4,4))
     plt.sca(ax)
     plot_sag(dataset, sweeps, n_max=1, **args)
-    plot_rheo(dataset, sweeps, **args)
+    plot_rheo(dataset, sweeps, plot_peri=plot_peri, **args)
     plot_hero(dataset, sweeps, scalebar=scalebar, offset=20, **args)
         
-def plot_sweeps_thumb(sweepset, scalebar=False, offset=0, dy=None, **kwargs):
-    # sweepset.align_to_start_of_epoch("stim")
-    sweepset.select_epoch("experiment")
+def plot_sweeps_thumb(sweepset, scalebar=False, xmin=-0.05, xmax=1.15, offset=0, 
+                      dy=None, loc=None, **kwargs):
+    sweepset.select_epoch("recording")
+    sweepset.align_to_start_of_epoch("stim")
     nblock = 10
-    t = subsample_average(sweepset.t[0], nblock)
     delta = 0
-    for v in sweepset.v:
+    for i, v in enumerate(sweepset.v):
         delta += offset
+        t = subsample_average(sweepset.t[i], nblock)
         plt.plot(t, subsample_average(v, nblock) + delta, **kwargs)
     plt.axis('off')
     ax = plt.gca()
+    plt.xlim(xmin, xmax)
     if dy:
         y0, y1 = ax.get_ylim()
         plt.ylim(y1-dy, y1)
     if scalebar:
-        add_scalebar(ax, matchx=False, matchy=False, sizex=0.5, labelx='0.5 s',
-                    sizey=10, labely='10 mV', textprops=dict(size='large', weight='bold'))
+        add_scalebar(ax, loc=loc, matchx=False, matchy=False, sizex=0.5, 
+                    sizey=10, textprops=dict(size='large', weight='bold'))
+        #  labelx='0.5 s', labely='10 mV',
     # if scale_factor:
     #     w = x1-x0
     #     h = y1-y0

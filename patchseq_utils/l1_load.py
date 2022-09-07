@@ -5,9 +5,9 @@ from . import shiny, lims
 from .util import *
 
 
-figdir = Path('/allen/programs/celltypes/workgroups/humancelltypes/tom/figures/talk/')
 datadir = Path("/home/tom.chartrand/projects/data/u01/")
 projectdir = Path('/home/tom.chartrand/projects/human_l1')
+figdir = projectdir/'figures'
 
 
 cluster = 't-type'
@@ -19,7 +19,7 @@ palette_subclass =  {
 'PAX6': '#e3b5c7',
 'LAMP5': '#e68553',
 'MC4R': '#ae1e3d',
-'VIP': '#6c00bf',
+'L1 VIP': '#6c00bf',
 'other': 'grey',
 }
 species_palette = palette = {
@@ -27,21 +27,23 @@ species_palette = palette = {
     'mouse':'tab:grey',
 }
 date = "2022_06_22"
+date = "2022_09_06"
 human_df = pd.read_csv(f"~/projects/human_l1/human_l1_dataset_{date}.csv", index_col=0,
                       dtype = {'layer_lims': str, 'target_layer': str})
 human_ephys = pd.read_csv(datadir/"aibs"/"features_E.csv", index_col=0)
 tamas_ephys = pd.read_csv(datadir/"tamas"/"features_E.csv", index_col=0)
 mansvelder_ephys = pd.read_csv(datadir/"mansvelder"/"features_E.csv", index_col=0)
-human_depth = pd.read_csv(projectdir/'human_layer_depths_2022_03_22.csv', index_col='specimen_id').drop(columns=['Unnamed: 0'])
+human_depth = pd.read_csv(projectdir/'human_layer_depths_2022_09_02.csv', index_col='specimen_id').drop(columns=['Unnamed: 0'])
 human_morph = pd.read_csv(projectdir/'RawFeatureWide_human+derivatives.csv', index_col='specimen_id').drop(columns=['Unnamed: 0'])
 
 mouse_df = pd.read_csv(projectdir/f"mouse_l1_dataset_{date}.csv", index_col=0)
 mouse_ephys = pd.read_csv(datadir/"aibs_mouse/features_E.csv", index_col=0)
-mouse_depth = pd.read_csv(projectdir/'mouse_layer_depths_2021_10_25.csv', index_col='specimen_id').drop(columns=['Unnamed: 0'])
+mouse_depth = pd.read_csv(projectdir/'mouse_layer_depths_2022_09_02.csv', index_col='specimen_id').drop(columns=['Unnamed: 0'])
 ccf_depth = pd.read_csv(projectdir/'mouse_l1_dataset_2021_10_25_ccf_aligned_depths.csv', index_col=0)
 mouse_morph = pd.read_csv(projectdir/'RawFeatureWide_mouse+derivatives.csv', index_col='specimen_id').drop(columns=['Unnamed: 0'])
 
-ephys_features = [feat for feat in human_ephys.columns.intersection(mouse_ephys.columns) 
+ephys_features = [feat for feat in human_ephys.columns
+                  # .intersection(mouse_ephys.columns) 
                   if 'qc' not in feat and 'fail' not in feat]
 morph_features = human_morph.columns
 
@@ -54,14 +56,14 @@ homology = {
         'human':['Inh L1-2 PAX6 CDH12', 'Inh L1-2 PAX6 TNFAIP8L3']
     },
     'LAMP5':{
-        'mouse':['Lamp5 Plch2 Dock5', 'Lamp5 Lsp1'],
-        'human':['Inh L1 SST NMBR', 'Inh L1-2 LAMP5 DBP', 'Inh L1-6 LAMP5 LCP2']
+        'mouse':['Lamp5 Lsp1', 'Lamp5 Plch2 Dock5', 'Lamp5 Ntn1 Npy2r'],
+        'human':['Inh L1-6 LAMP5 LCP2', 'Inh L1-2 LAMP5 DBP', 'Inh L1 SST NMBR']
     },
     'MC4R':{
-        'mouse':['Lamp5 Fam19a1 Pax6', 'Lamp5 Ntn1 Npy2r', 'Lamp5 Fam19a1 Tmem182'],
+        'mouse':['Lamp5 Fam19a1 Pax6', 'Lamp5 Fam19a1 Tmem182'],
         'human':['Inh L1 SST CHRNA4', 'Inh L1-2 GAD1 MC4R']
     },
-    'VIP':{
+    'L1 VIP':{
         'mouse':['Sncg Vip Nptx2', 'Vip Col15a1 Pde1a'],
         'human':[ 'Inh L1-2 VIP TSPAN12']
     },
@@ -106,18 +108,11 @@ mouse_df = (mouse_df.join(mouse_ephys)
             .join(ccf_depth)
             .join(mouse_morph))
 
+# TODO: fix this elsewhere
+human_df.loc[lambda df: df['first_isi_inv_hero']>1000, 'first_isi_inv_hero'] = np.nan
+human_df.loc[lambda df: df['first_isi_inv_rheo']>1000, 'first_isi_inv_rheo'] = np.nan
+human_df.loc[lambda df: df['input_resistance_ss']>1000, 'input_resistance_ss'] = np.nan
+human_df.loc[lambda df: df['input_resistance']>1000, 'input_resistance'] = np.nan
 
-def get_shiny(species, nms_pass=True):
-    shiny_df = shiny.load_shiny_data(species, drop_offpipeline=False, nms_pass=nms_pass)
-    shiny_df = shiny_df.loc[lambda df: (df.broad_class.str.contains('GABAergic'))]
-
-    lims_df = lims.get_cells_df(cells_list=shiny_df.index)
-    lims_df.layer = lims_df.layer.apply(lambda x: x.split(' ')[-1] if x else x)
-    shiny_df = (shiny_df
-                .join(lims_df, rsuffix='_lims')
-                .assign(species=species))
-    if species=='human':
-        shiny_df[cluster] = shiny_df['topLeaf'].map(shorten_name)
-    else:
-        shiny_df[cluster] = shiny_df['topLeaf']
-    return shiny_df
+# remove Tx-only cells
+human_df = human_df.query("has_morph | layer==layer | failed_fx_long_squares==False")

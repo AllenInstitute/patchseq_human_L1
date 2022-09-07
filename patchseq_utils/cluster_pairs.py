@@ -5,6 +5,7 @@ from sklearn.metrics import roc_auc_score, make_scorer
 from sklearn.naive_bayes import GaussianNB
 from sklearn.model_selection import cross_val_score, cross_val_predict, LeaveOneOut
 from .pipelines import preproc_pipeline
+from .util import short_feat
 
 def dprime(y_true, y_score):
     area = roc_auc_score(y_true, y_score, average=None, multi_class='ovo')
@@ -25,8 +26,11 @@ def dprime_gaussian(y_true, y_score):
     return dprime
     
 
+dprime_feat = lambda clf: (np.abs(clf.theta_[0] - clf.theta_[1]) / 
+                           np.sqrt(np.sum(clf.var_, axis=0)))
+
 def pairwise_cluster_distances(clf, data, features, cluster_label, 
-                              fit_pairwise=True, details=False, 
+                              fit_pairwise=True, details=False, ranking=dprime_feat,
                                metric=dprime, method='predict_proba', cv=None):
     X0 = data[features].values
     X = preproc_pipeline().fit_transform(X0)
@@ -61,11 +65,11 @@ def pairwise_cluster_distances(clf, data, features, cluster_label,
                 
                 if details:
                     clf.fit(X[subset, :], y_i)
-                    dprime_feat = np.abs(clf.theta_[0] - clf.theta_[1])/np.sqrt(np.sum(clf.var_, axis=0))
-                    i_feat = np.argmax(dprime_feat)
+                    importance = ranking(clf)
+                    i_feat = np.argmax(importance)
                     records.append({
                         'feature': features[i_feat],
-                        'dprime': dprime_feat[i_feat],
+                        'importance': importance[i_feat],
                         'cluster_1': cluster_order[i],
                         'cluster_2': cluster_order[j],
                     })
@@ -140,3 +144,16 @@ def plot_dprime_tree(clf, data, features, cluster,**kwargs):
     Z = hierarchy.linkage(y, **kwargs)
     fig, ax = plt.subplots(figsize=(6,4))
     hierarchy.dendrogram(Z, ax=ax, labels=clusters, orientation='right')
+    
+def plot_dprime_features(dprime, records):
+    clusters = dprime.index
+    df = pd.DataFrame.from_records(records, index=['cluster_1', 'cluster_2'])
+    df['short_feat'] = df['feature'].map(short_feat)
+    labels = (df.reset_index().pivot(index='cluster_1', columns='cluster_2', values='short_feat')
+              .reindex(index=clusters, columns=clusters)
+              .fillna(''))
+
+    fig, ax = plt.subplots(figsize=(6,5))
+    sns.heatmap(dprime, annot=labels, fmt='s', cmap='rocket_r',
+                annot_kws=dict(size=10), cbar_kws=dict(label="d'"), vmin=0, vmax=3,
+               cbar=True, ax=ax)

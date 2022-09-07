@@ -278,7 +278,7 @@ def single_result_query(sql):
     if len(results)==0:
         warnings.warn("No results found in LIMS.")
         return None
-    return results[0]
+    return list(results[0].values())[0]
 
 def df_from_query(sql):
     return pd.DataFrame.from_records(query(sql))

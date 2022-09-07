@@ -28,7 +28,7 @@ def plot_cell_lims(specimen_id, rotate=True, scale_factor=None, scalebar=True, c
     if rotate==True:
         nrn = mu.make_upright_morphology(specimen_id)
     else:
-        path =  lims.get_swc_path_from_lims(specimen_id, manual_only=True)
+        path =  lims.get_swc_path(specimen_id, manual_only=True)
         nrn = swc.read_swc(path)
         if rotate:
             th = np.radians(rotate)

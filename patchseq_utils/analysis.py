@@ -115,9 +115,11 @@ def plot_sig_bar(pval, y, x_pair, bar=True, label='stars', ax=None):
     ax.annotate(text, xy=(np.mean(x_pair), y), xytext=(0, 2), textcoords='offset points',
         horizontalalignment='center', verticalalignment='center')
 
-def plot_test_bars(data, var, group, test='mannwhitney', group_vals=None, pairs='all', cutoff=0.05, label='stars', ax=None, y0=None):
+def plot_test_bars(data, var, group, test='mannwhitney', group_vals=None, pairs='all', 
+                   cutoff=0.05, fdr_method='fdr_bh',
+                   label='stars', ax=None, y0=None):
     group_vals = group_vals or data[group].sort_values().unique().tolist()
-    pvals, pairs_idx, pairs_names = posthoc_results(data, group, var, group_vals, pairs=pairs, method=test)
+    pvals, pairs_idx, pairs_names = posthoc_results(data, group, var, group_vals, pairs=pairs, method=test, p_adjust=fdr_method)
     # plot_data = data[ data[group].isin(set.union(*map(set, pairs_list)))]
     plot_data = data[data[group].isin(group_vals)]
     y0 = plot_data[var].max()
@@ -143,7 +145,7 @@ def outline_boxplot(ax):
 def plot_box_cluster_feature(data, y, x='cluster', x_fine=None, label=None, ax=None,
                     palette=None, palette_fine=None, strip_width=0.2, 
                     drop_box=False,
-                    test='mannwhitney', pairs_sets=[], cutoff=0.05, 
+                    test='mannwhitney', pairs='all', cutoff=0.05, fdr_method='fdr_bh',
                     invert_y=False, label_yaxis=False, pad_title=0, title_loc='right',
                     label_counts=True, label_color=False, size=3, highlight=None, 
                     legend=None, **kwargs
@@ -196,35 +198,52 @@ def plot_box_cluster_feature(data, y, x='cluster', x_fine=None, label=None, ax=N
                 xtick.set_color(palette[name])
     else:
         ax.set_xticklabels(xlabels, rotation=45, fontstyle='italic', ha='right')
-    if data[y].min()>0:
+    min = data[y].min()
+    max = data[y].max()
+    if (min>0) and ((min>2) or not ((max<2) and (min>0.4))):
         ax.set_ylim(0, None, auto=True)
-        
-    for pairs in pairs_sets:
-        plot_test_bars(data, y, x, test=test, group_vals=None, pairs=pairs, 
+
+    if pairs=='all' and drop_box:
+        pairs = list(combinations(set(data[x].unique()).difference(drop_box), 2))
+    if pairs is not None:
+        plot_test_bars(data, y, x, test=test, group_vals=None, pairs=pairs, fdr_method=fdr_method,
                        ax=ax, cutoff=cutoff, label=None)
         
-    if data[y].min()>0:
+    min = data[y].min()
+    max = data[y].max()
+    if (min>0) and ((min>2) or not ((max<2) and (min>0.4))):
         ax.set_ylim(0, None, auto=True)
     if invert_y:
         ax.invert_yaxis()
 
 def plot_boxplot_multiple(data, features, x='cluster', labels=None, horizontal=False, figsize=(4,8),
+                          label_yaxis=False, pad_title=0, title_loc='right',
                              plot_function=plot_box_cluster_feature, **kwargs
                             ):
     n = len(features)
-    labels = labels or features
+    if labels is None:
+        labels = features
+    elif callable(labels):
+        labels = [labels(x) for x in features]
+        
     if horizontal:
-        fig, axes = plt.subplots(1,n, figsize=figsize, sharey=True)
+        fig, axes = plt.subplots(1,n, figsize=figsize, sharex=True)
     else:    
         fig, axes = plt.subplots(n,1, figsize=figsize, sharex=True)
+    if n==1:
+        axes = [axes]
         
     for i, ax in enumerate(axes):
-        plot_function(data, y=features[i], x=x, label=labels[i], ax=ax, **kwargs)
+        plot_function(data, y=features[i], x=x, ax=ax, **kwargs)
+        if label_yaxis:
+            ax.set_ylabel(labels[i])
+        else:
+            ax.set_ylabel(None)
+            ax.set_title(labels[i], loc=title_loc, pad=pad_title)
         
 def run_cluster_anova(df, features, cluster_var='cluster', pval='pval_cluster', cov_type='HC3', fdr_method='fdr_bh',):
     df = df.copy()
     df['cluster'] = df[cluster_var]
-    fdr_method='fdr_bh'
     
     results = (fit_models(df, ['cluster'], features, cov_type=cov_type).set_index('feature')
         .sort_values('rsquared', ascending=False)
@@ -302,26 +321,27 @@ def posthoc_results(data, group_col, val_col, group_vals=None, p_adjust=None, cu
 def run_kw_dunn(data, features, group_col, fdr_method='fdr_bh', posthoc='dunn', cutoff=0.05):
 #     features = [x for x in features if data.groupby(group_col)[x].var().min() > 0]
     records = []
-    pval = 'pval_cluster'
-    k = len(data[group_col].unique())
+    pval = 'pval'
     for f in features:
         df = data.dropna(subset=[f, group_col])
-        n = len(df)
         groups = df.groupby(group_col, observed=True)[f].apply(list)
+        k = len(groups)
+        n = len(df)
         rec = dict(feature=f)
         rec['KW_H'], rec[pval] = kruskal(*groups.values)
-        rec['rsquared'] = (rec['KW_H'] - k + 1)/(n - k)
+        # rec['rsquared'] = (rec['KW_H'] - k + 1)/(n - k)
         rec['epsilon2'] = rec['KW_H']/(n-1)
         records.append(rec)
     results = pd.DataFrame.from_records(records, index='feature')
 
     if fdr_method is not None:
-        results[pval] = results[pval].pipe(lambda col: multipletests(col, method=fdr_method)[1])
+        results['pval_fdr'] = results[pval].pipe(lambda col: multipletests(col, method=fdr_method)[1])
     if posthoc:
         results = results.assign(pairs=None, ipairs=None, pair_count=None)
         for f in features:
-            if results.loc[f,pval] < cutoff:
-                pvals, index, names = posthoc_results(data, group_col, f, p_adjust='fdr_bh')
+            df = data.dropna(subset=[f, group_col])
+            if results.loc[f,'pval_fdr'] < cutoff:
+                pvals, index, names = posthoc_results(df, group_col, f, p_adjust='fdr_bh')
                 str_index = [''.join(str(i) for i in pair) for pair in index]
                 results.loc[f, ['pairs', 'ipairs', 'pair_count']] = names, str_index, len(pvals)
     return results.sort_values(pval)
@@ -443,7 +463,6 @@ def plot_cv_cm(pipeline, X, y, scoring=None, cv=RepeatedStratifiedKFold(), label
     return cm
 
 def run_regressions(df, features, variable, pval=None, cov_type='HC3', fdr_method='fdr_bh', pretty_format=False):
-    fdr_method='fdr_bh'
     
     results = (fit_models(df, [variable], features, cov_type=cov_type).set_index('feature')
         .sort_values('rsquared', ascending=False)
@@ -454,7 +473,7 @@ def run_regressions(df, features, variable, pval=None, cov_type='HC3', fdr_metho
     for x in pval:
         results[f"{x}_fdr"] = (
             results[x].pipe(pd.DataFrame)#in case this is Series
-            .apply(lambda col: multitest.multipletests(col, method=fdr_method)[1]).astype(float)
+            .apply(lambda col: multipletests(col, method=fdr_method)[1]).astype(float)
     )
     if pretty_format:
         cols = [
@@ -491,8 +510,8 @@ def run_twosamp(df, features, variable, fdr_method='fdr_bh', sort_by='pval_mw'):
                             feature=feature, nobs=nums[0]+nums[1]))
         
     results = pd.DataFrame(records).sort_values(sort_by, ascending=True).set_index('feature')
-    results["pval_t_fdr"] = multitest.multipletests(results["pval_t"], method=fdr_method)[1]
-    results["pval_mw_fdr"] = multitest.multipletests(results["pval_mw"], method=fdr_method)[1]
+    results["pval_t_fdr"] = multipletests(results["pval_t"], method=fdr_method)[1]
+    results["pval_mw_fdr"] = multipletests(results["pval_mw"], method=fdr_method)[1]
     return results
 
         
@@ -517,11 +536,11 @@ def permutation_test(data, dep_vars, effect_fcn, bs_agg_fcn=np.max, n_permutatio
 from scipy.stats import spearmanr, pearsonr
 from statsmodels.nonparametric.smoothers_lowess import lowess
 from sklearn.isotonic import IsotonicRegression
-def plot_spearman(data, x, y, smooth=True, hue=None, palette=None, ax=None):
+def plot_spearman(data, x, y, smooth=True, hue=None, palette=None, label=None, stats=True, ax=None, **kwargs):
     if ax is None:
         fig, ax = plt.subplots()
     corr, p = spearmanr(data[x], data[y], nan_policy='omit')
-    sns.scatterplot(data=data, x=x, y=y, hue=hue, legend=False, ax=ax, palette=palette)
+    sns.scatterplot(data=data, x=x, y=y, hue=hue, legend=False, ax=ax, palette=palette, **kwargs)
 
     if smooth:
         smoothed = lowess(data[y], data[x])
@@ -532,27 +551,52 @@ def plot_spearman(data, x, y, smooth=True, hue=None, palette=None, ax=None):
         ax.plot(xsmooth, ysmooth, 'grey')
 
     summary = f"ρ={corr:.2g}, p={p:.2g}"
-    ax.text(0.5, 0.99, summary, transform=ax.transAxes,
-        verticalalignment='top', horizontalalignment='center')
+    if stats:
+        ax.text(0.5, 0.99, summary, transform=ax.transAxes,
+            verticalalignment='top', horizontalalignment='center')
     sns.despine()
 
+def run_correlations(data, features, xvar, fdr_method='fdr_bh'):
+    results = []
+    for gene in features:
+        if gene not in data or data[gene].pipe(lambda x: sum(x>1)) < 5:
+            continue
+        df = data.dropna(subset=[gene, xvar])
+        r, p = spearmanr(df[gene], df[xvar])
+        out = {
+        "feature":gene,
+        # "feature":xvar,
+        'r':r,
+        'pval':p,
+        }
+        results.append(out)
+    results = pd.DataFrame.from_records(results, index='feature')
+    if fdr_method is not None:
+        results['pval_fdr'] = results['pval'].pipe(lambda col: multipletests(col, method=fdr_method)[1])
+    return results.sort_values('pval')
+
 def run_species_subclass_stats(data, features, compare='species', group_var='homology_type', groups=None, rank_transform=False,
-                               cutoff=0.05, fdr_anova='fdr_bh', fdr_subgroup=None, anova_type=1):
+                               cutoff=0.05, compare_first=True, fdr_anova='fdr_bh', fdr_subgroup=None, anova_type=1):
     if groups is None:
         groups = data[group_var].unique()
-    results = fit_models(data, [f"{compare}*{group_var}"], features, 
+    model = f"{compare}*{group_var}" if compare_first else f"{group_var}*{compare}"
+    results = fit_models(data, [model], features, 
                          rank_transform=rank_transform, anova_type=anova_type);
     pvals = [x for x in results.columns if 'pval' in x]
-    results[pvals] = (results[pvals].pipe(pd.DataFrame)#in case this is Series
+    results[pvals] = (results[pvals]
             .apply(lambda col: multipletests(col, method=fdr_anova)[1]).astype(float))
     results = results.sort_values(f'eta_p_{compare}', ascending=False).set_index('feature')
-    results['interaction'] = results[f"pval_{compare}:{group_var}"] < cutoff
+    results['interaction'] = results[f"pval_{model.replace('*',':')}"] < cutoff
     
-    cols = [f'eta_p_{compare}', f'pval_{compare}', f"pval_{compare}:{group_var}", 'rsquared', 'interaction']
+    cols = [f'eta_p_{compare}', f'pval_{compare}', f"pval_{model.replace('*',':')}", 'rsquared', 'interaction']
+    
     interaction_features = results.loc[results.interaction].index
-    interaction_results = subgroup_comparisons(data, interaction_features, group_var, compare, 
+    if len(interaction_features)>0:
+        interaction_results = subgroup_comparisons(data, interaction_features, group_var, compare, 
                                                groups=groups, cutoff=cutoff, fdr_method=fdr_subgroup)
-    return results[cols].join(interaction_results)
+        return results[cols].join(interaction_results)
+    else:
+        return results[cols]
 
 def subgroup_comparisons(df, features, group_var, compare, groups=None, fdr_method=None, cutoff=0.05):
     if groups is None:
