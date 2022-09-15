@@ -1,0 +1,149 @@
+---
+title: "human PS/FACS alignment with SCT/Seurat"
+author: "Tom Chartrand"
+date: "8/24/22"
+output: html_notebook
+---
+
+```{r, include=FALSE}
+
+library(Seurat)
+library(dplyr)
+library(future)
+# plan("multisession", workers = 4)
+
+options(future.globals.maxSize = 2000 * 1024^2)
+```
+
+```{r load data}
+data_folder = file.path('', 'home','tom.chartrand','projects','human_l1')
+load(file.path(data_folder, "facs_human.RData"))
+```
+
+```{r load ps}
+load(file.path(data_folder, "ps_human.RData"))
+# restore pinned labels
+ps_dataset = read.csv("/home/tom.chartrand/projects/human_l1/human_l1_dataset_2022_06_22.csv") %>%
+  filter(l1_type=="True")
+annoPS$topLeaf_label = ps_dataset$topLeaf
+# already filtered in csv
+# ps_filter = eval(expr(contam_sum_label<1.5 & marker_sum_norm_label>0.5), annoPS)
+# ps_filter = eval(expr(contam_sum_label<1.5), annoPS)
+# annoPS = annoPS[ps_filter,]
+# datPS = datPS[,ps_filter]
+```
+
+```{r}
+annoFACS = annoFACS %>% mutate(homology_type =
+  case_when(
+    cluster_label %in% c('Inh L1-2 PAX6 CDH12', 'Inh L1-2 PAX6 TNFAIP8L3') ~ 'PAX6',
+    cluster_label %in% c('Inh L1 LAMP5 NMBR', 'Inh L1-4 LAMP5 LCP2', 'Inh L1-2 LAMP5 DBP') ~ 'LAMP5',
+    cluster_label %in% c('Inh L1 SST CHRNA4', 'Inh L1-2 ADARB2 MC4R') ~ 'MC4R',
+    cluster_label %in% c('Inh L1-2 VIP TSPAN12') ~ 'VIP',
+    TRUE ~ NA_character_
+  ))
+annoFACS %>% count(homology_type)
+```
+
+```{r create seurat objects, results='hide'}
+slice_affected_genes  <- scan("slice_affected_genes.txt",what="sep",sep="\n")
+features <- setdiff(good_genes, slice_affected_genes)
+# features = good_genes
+facs <- CreateSeuratObject(datFACS[features,], 
+                           meta.data = data.frame(annoFACS, row.names = annoFACS$sample_id))
+ps <- CreateSeuratObject(datPS[features,], 
+                         meta.data = data.frame(annoPS, row.names = annoPS$sample_id))
+facs <- subset(facs, subset = nFeature_RNA < 9000)
+ps <- subset(ps, subset = nFeature_RNA < 12000)
+```
+
+```{r}
+# Idents(facs) = facs$homology_type
+# all.markers = FindAllMarkers(facs, test.use='roc')
+# write.csv(all.markers %>% filter(power>0.5), file = file.path(data_folder, "human_markers.csv"))
+```
+
+
+
+Use SCTransform to normalize, regressing out patch-seq contamination effects
+```{r sctransform, results='hide'}
+normalization.method <- "SCT"
+ps <- SCTransform(ps, vars.to.regress = "contam_sum_label", verbose = FALSE) %>% RunPCA(verbose = FALSE)
+facs <- SCTransform(facs) %>% RunPCA(verbose = FALSE)
+
+# facs <- SCTransform(facs, vars.to.regress = "nFeature_RNA", verbose = FALSE) %>% RunPCA(verbose = FALSE)
+# ps <- SCTransform(ps, vars.to.regress = "nFeature_RNA", verbose = FALSE) %>% RunPCA(verbose = FALSE)
+
+# facs  <- NormalizeData(facs) %>% RunPCA()
+# normalization.method <- "LogNormalize"
+```
+```{r}
+x=ps[["SCT"]]@scale.data
+save(x, file=file.path(data_folder, "seurat_sct_human_ps.rda"))
+x=facs[["SCT"]]@scale.data
+save(x, file=file.path(data_folder, "seurat_sct_human_facs.rda"))
+```
+
+Integrate
+```{r}
+dims = 30
+obj.list <- c(facs, ps)
+features <- SelectIntegrationFeatures(obj.list)
+obj.list <- PrepSCTIntegration(obj.list, anchor.features = features)
+
+anchors <- FindIntegrationAnchors(object.list = obj.list, normalization.method = normalization.method, anchor.features = features)
+brain.integrated <- IntegrateData(anchorset = anchors, dims = 1:dims, normalization.method = normalization.method, verbose = FALSE)
+
+## Run the main integration analysis
+DefaultAssay(object = brain.integrated) <- "integrated"
+brain.integrated <- ScaleData(object = brain.integrated, verbose = FALSE)
+brain.integrated <- RunPCA(object = brain.integrated, npcs = dims, verbose = FALSE)
+brain.integrated <- RunUMAP(object = brain.integrated, reduction = "pca", dims = 1:dims, verbose = FALSE)
+```
+
+Plot the results in UMAP space.  
+  
+```{r plot UMAP for merged analysis, echo=FALSE, fig.height=4, fig.width=12, results='hide'}
+library(ggplot2)
+library(cowplot)
+brain.integrated$dataset = c(rep("FACS",dim(facs)[2]),rep("PS",dim(ps)[2]))
+Idents(brain.integrated) = c(rep("FACS",dim(facs)[2]),rep("PS",dim(ps)[2]))
+xl <- range(FetchData(brain.integrated,"UMAP_1"))
+yl <- range(FetchData(brain.integrated,"UMAP_2"))
+colsH <- unique(annoFACS$cluster_color)[match(sort(unique(annoFACS$cluster_label)),unique(annoFACS$cluster_label))]
+colsPS <- unique(annoPS$topLeaf_color)[match(sort(unique(annoPS$topLeaf_label)),unique(annoPS$topLeaf_label))]
+p1 <- DimPlot(object = brain.integrated, group.by = "dataset", reduction = "umap",
+              pt.size = 1) + ggtitle("Platform (green=patchseq)") +xlim(xl) + ylim(yl) + NoLegend()
+p2 <- DimPlot(object = brain.integrated, group.by = "cluster_label",  reduction = "umap", 
+       pt.size = 1, label=TRUE, label.size = 2, cells=colnames(facs), cols=colsH) + NoLegend() + 
+      ggtitle("FACS cells") + xlim(xl) + ylim(yl) 
+p4 <- DimPlot(object = brain.integrated, group.by = "topLeaf_label",  reduction = "umap",
+       pt.size = 1, label=TRUE, label.size = 2, cells=colnames(ps), cols=colsH) + NoLegend() +
+      ggtitle("Original PS clusters") + xlim(xl) + ylim(yl)
+plot_grid(p1, p2,  p4, ncol=3)
+write.csv(brain.integrated@reductions$umap@cell.embeddings, file=file.path(data_folder, "seurat_human_sct.csv"))
+```
+```{r}
+Idents(ps) = "PS"
+VlnPlot(brain.integrated, features = c("nFeature_RNA", "nCount_RNA"), ncol = 3)
+```
+
+
+```{r qc plot, fig.height=7,fig.width=8}
+features2 <- c("nFeature_RNA","marker_sum_norm_label",
+  "topLeafValue_label", "contam_sum_label"
+  )
+FeaturePlot(brain.integrated, cells = colnames(ps), reduction = "umap", pt.size = 2, features = features2, ncol=2)
+```
+
+```{r, fig.height=5,fig.width=5}
+mdfeatures = c("medical_conditions_label","collaborator_label")
+DimPlot(brain.integrated, cells = colnames(ps), group.by=mdfeatures,
+        reduction = "umap", ncol=1,
+        pt.size = 1,)
+```
+```{r qc plot2, fig.height=7,fig.width=8}
+features2 <- c("nFeature_RNA","total_reads_label","Genes.Detected_label","reads_aligned_to_genome_only_label"
+  )
+FeaturePlot(object = brain.integrated, cells = colnames(facs), reduction = "umap", pt.size = 2, features = features2, ncol=2)
+```

@@ -1,0 +1,104 @@
+---
+title: "human PS/FACS alignment with SCT/Seurat"
+author: "Tom Chartrand"
+date: "8/24/22"
+output: html_notebook
+---
+
+```{r, include=FALSE}
+library(scrattch.vis)
+options(stringsAsFactors = F)
+```
+
+```{r load data}
+data_folder = file.path('', 'home','tom.chartrand','projects','human_l1')
+load(file.path(data_folder, "facs_human.RData"))
+human_anno = annoFACS
+human_dat = data.frame(t(datFACS))
+human_dat$sample_name = human_anno$sample_id
+human_anno$sample_name = human_anno$sample_id
+# human_anno$cluster_label = lapply(human_anno$cluster_label, function(x){paste(tail(strsplit(x, ' ')[[1]], 2), collapse = ' ')})
+
+load(file.path(data_folder, "facs_mouse.RData"))
+mouse_anno = annoFACS
+mouse_dat = data.frame(t(datFACS))
+mouse_dat$sample_name = mouse_anno$sample_id
+mouse_anno$sample_name = mouse_anno$sample_id
+```
+
+
+```{r, fig.height=8, fig.width=4}
+subclass_genes = c("Pax6", "Lamp5", "Mc4r", "Vip", "Ndnf", "Npy", "Chrna7")
+clusters = c("Inh L1-2 PAX6 CDH12", "Inh L1-2 PAX6 TNFAIP8L3", "Inh L1-4 LAMP5 LCP2","Inh L1-2 LAMP5 DBP", "Inh L1 LAMP5 NMBR",
+             "Inh L1 SST CHRNA4","Inh L1-2 ADARB2 MC4R", "Inh L1-2 VIP TSPAN12",  "Inh L1-2 VIP PCDH20", "Inh L1-2 SST BAGE2")
+human_genes = lapply(clusters, function(x){strsplit(x, ' ')[[1]][[4]]})
+human_genes = human_genes[human_genes!="MC4R"]
+human_ids = sapply(clusters, function(x){
+  (human_anno %>% filter(cluster_label==x) %>% pull(cluster_id))[1]
+})
+genes = c(subclass_genes, human_genes)
+genes = sapply(genes, toupper)
+g = group_violin_plot(human_dat, human_anno, genes = genes, grouping = "cluster", group_order = human_ids,
+                  label_height = 20, max_width = 18)
+g = (g +  geom_vline(xintercept = 2.5) + geom_vline(xintercept = 5.5) + geom_vline(xintercept = 7.5))
+g$layers = c(geom_rect(aes(xmin=0.5, xmax=10.5, ymin=13, ymax=17), fill="pink", alpha=0.4), 
+             geom_rect(aes(xmin=0.5, xmax=10.5, ymin=10, ymax=13), fill="grey", alpha=0.4),
+             g$layers)
+ggsave(file.path(data_folder, "figures", "markers_human.pdf"), height=8, width=4)
+ggsave(file.path(data_folder, "figures", "markers_human.png"), height=8, width=4)
+g
+```
+```{r, fig.height=7.2, fig.width=3.5}
+clusters = c("Lamp5 Krt73", "Lamp5 Lsp1", "Lamp5 Plch2 Dock5", "Lamp5 Ntn1 Npy2r",  "Lamp5 Fam19a1 Tmem182", "Lamp5 Fam19a1 Pax6", 
+             "Sncg Vip Nptx2",  "Vip Col15a1 Pde1a")
+mouse_ids = sapply(clusters, function(x){
+  (mouse_anno %>% filter(cluster_label==x) %>% pull(cluster_id))[1]
+})
+genes = genes[genes!="BAGE2"]
+genes = sapply(genes, function(x){paste0(substr(x, 1, 1), tolower(substr(x, 2, nchar(x))))})
+g = group_violin_plot(mouse_dat, mouse_anno, genes = genes, grouping = "cluster", group_order = mouse_ids,
+                  label_height = 21, max_width = 20)
+g = (g +  geom_vline(xintercept = 1.5) + geom_vline(xintercept = 4.5) + geom_vline(xintercept = 6.5))
+g$layers = c(geom_rect(aes(xmin=0.5, xmax=8.5, ymin=12, ymax=16), fill="pink", alpha=0.4), 
+             geom_rect(aes(xmin=0.5, xmax=8.5, ymin=9, ymax=12), fill="grey", alpha=0.4),
+             g$layers)
+ggsave(file.path(data_folder, "figures", "markers_mouse.pdf"), height=7.2, width=3.6)
+ggsave(file.path(data_folder, "figures", "markers_mouse.png"), height=7.2, width=3.6)
+g
+```
+
+```{r, fig.height=5.5, fig.width=3}
+genes = c('Kcnab1','Kcna1','Kcna4','Kcnc4','Kcnd2','Kcnd3'
+          )
+g = group_dot_plot(mouse_dat, mouse_anno, genes = genes, grouping = "cluster", 
+                   group_order = mouse_ids, fill_stat = "median", normalize_rows=T, 
+                   label_height=40, max_width=0, log_scale = T)
+g +  geom_vline(xintercept = 1.5) + geom_vline(xintercept = 4.5) + geom_vline(xintercept = 6.5)
+
+human_genes = sapply(genes, toupper)
+g = group_dot_plot(human_dat, human_anno, genes = human_genes, grouping = "cluster", group_order = human_ids, 
+                   fill_stat = "median", normalize_rows=T, label_height=40, log_scale = T)
+(g +  geom_vline(xintercept = 2.5) + geom_vline(xintercept = 5.5) 
+  + geom_vline(xintercept = 7.5) )
+```
+
+```{r, fig.height=5.5, fig.width=3}
+genes = c("Gabrd", 
+          # 'Gabbr1', 'Gabbr2',  expressed in all
+          "Chrm1", 'Chrm2', 'Chrm3', 
+           'Chrna2',  'Chrna4',  'Chrna6', 'Chrna7',
+          'Chrnb2', 'Chrnb3', 
+          'Grm1', 'Cck'
+          )
+g = group_dot_plot(mouse_dat, mouse_anno, genes = genes, grouping = "cluster", 
+                   group_order = mouse_ids, fill_stat = "median", normalize_rows=T, 
+                   label_height=40, max_width=0, log_scale = T)
+g +  geom_vline(xintercept = 1.5) + geom_vline(xintercept = 4.5) + geom_vline(xintercept = 6.5)
+
+human_genes = sapply(genes, toupper)
+g = group_dot_plot(human_dat, human_anno, genes = human_genes, grouping = "cluster", group_order = human_ids, 
+                   fill_stat = "median", normalize_rows=T, label_height=40, log_scale = T)
+(g +  geom_vline(xintercept = 2.5) + geom_vline(xintercept = 5.5) 
+  + geom_vline(xintercept = 7.5) )
+```
+

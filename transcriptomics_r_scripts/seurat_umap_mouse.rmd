@@ -1,0 +1,114 @@
+---
+title: "mouse PS/FACS alignment with SCT/Seurat"
+author: "Tom Chartrand"
+date: "8/24/22"
+output: html_notebook
+---
+
+```{r, include=FALSE}
+
+library(Seurat)
+library(dplyr)
+# library(future)
+# plan("multicore", workers = 4)
+# options(future.globals.maxSize = 2000 * 1024^2)
+```
+
+```{r load data}
+data_folder = file.path('', 'home','tom.chartrand','projects','human_l1')
+load(file.path(data_folder, "facs_mouse.RData"))
+load(file.path(data_folder, "ps_mouse.RData"))
+```
+
+```{r}
+annoFACS = annoFACS %>% mutate(homology_type =
+  case_when(
+    cluster_label %in% c('Lamp5 Krt73') ~ 'PAX6',
+    cluster_label %in% c('Lamp5 Plch2 Dock5', 'Lamp5 Lsp1', 'Lamp5 Ntn1 Npy2r') ~ 'LAMP5',
+    cluster_label %in% c('Lamp5 Fam19a1 Pax6','Lamp5 Fam19a1 Tmem182') ~ 'MC4R',
+    cluster_label %in% c('Sncg Vip Nptx2','Vip Col15a1 Pde1a') ~ 'VIP',
+    TRUE ~ NA_character_
+  ))
+annoFACS %>% count(homology_type)
+```
+
+```{r create seurat objects, results='hide'}
+
+facs <- CreateSeuratObject(datFACS[good_genes,], 
+                           meta.data = data.frame(annoFACS, row.names = annoFACS$sample_id))
+ps <- CreateSeuratObject(datPS[good_genes,], 
+                         meta.data = data.frame(annoPS, row.names = annoPS$sample_id))
+# facs <- CreateSeuratObject(datFACS[good_genes,], 
+#                            meta.data = data.frame(celltype=annoFACS$cluster_label, row.names = annoFACS$sample_id))
+# ps <- CreateSeuratObject(datPS[good_genes,], 
+#                          meta.data = data.frame(celltype=annoPS$topLeaf_label, row.names = annoPS$sample_id))
+```
+
+
+```{r}
+Idents(facs) = facs$homology_type
+all.markers = FindAllMarkers(facs, test.use='roc', max.cells.per.ident = 500)
+write.csv(all.markers %>% filter(power>0.5), file = file.path(data_folder, "mouse_markers.csv"))
+```
+
+Use SCTransform to normalize, regressing out patch-seq contamination effects
+```{r sctransform}
+# facs <- SCTransform(facs) %>% RunPCA(verbose = FALSE)
+facs <- SCTransform(facs, vars.to.regress = "nFeature_RNA", verbose = FALSE) %>% RunPCA(verbose = FALSE)
+ps <- SCTransform(ps, vars.to.regress = "nFeature_RNA", verbose = FALSE) %>% RunPCA(verbose = FALSE)
+```
+```{r}
+x=ps[["SCT"]]@scale.data
+save(x, file=file.path(data_folder, "seurat_sct_mouse_ps.rda"))
+x=facs[["SCT"]]@scale.data
+save(x, file=file.path(data_folder, "seurat_sct_mouse_facs.rda"))
+```
+Integrate
+```{r}
+dims = 30
+normalization.method <- "SCT"
+obj.list <- c(facs, ps)
+features <- SelectIntegrationFeatures(obj.list)
+obj.list <- PrepSCTIntegration(obj.list, anchor.features = features)
+
+anchors <- FindIntegrationAnchors(object.list = obj.list, normalization.method = normalization.method, anchor.features = features)
+brain.integrated <- IntegrateData(anchorset = anchors, dims = 1:dims, normalization.method = normalization.method, verbose = FALSE)
+
+## Run the main integration analysis
+DefaultAssay(object = brain.integrated) <- "integrated"
+brain.integrated <- ScaleData(object = brain.integrated, verbose = FALSE)
+brain.integrated <- RunPCA(object = brain.integrated, npcs = dims, verbose = FALSE)
+brain.integrated <- RunUMAP(object = brain.integrated, reduction = "pca", dims = 1:dims, verbose = FALSE)
+```
+
+Plot the results in UMAP space.  
+  
+```{r plot UMAP for merged analysis, echo=FALSE, fig.height=4, fig.width=12, results='hide'}
+library(ggplot2)
+library(cowplot)
+brain.integrated$dataset = c(rep("FACS",dim(datFACS)[2]),rep("PS",dim(datPS)[2]))
+xl <- range(FetchData(brain.integrated,"UMAP_1"))
+yl <- range(FetchData(brain.integrated,"UMAP_2"))
+colsH <- unique(annoFACS$cluster_color)[match(sort(unique(annoFACS$cluster_label)),unique(annoFACS$cluster_label))]
+colsPS <- unique(annoPS$topLeaf_color)[match(sort(unique(annoPS$topLeaf_label)),unique(annoPS$topLeaf_label))]
+p1 <- DimPlot(object = brain.integrated, group.by = "dataset", reduction = "umap",
+              pt.size = 1) + ggtitle("Platform (green=patchseq)") +xlim(xl) + ylim(yl) + NoLegend()
+p2 <- DimPlot(object = brain.integrated, group.by = "celltype",  reduction = "umap", 
+       pt.size = 1, label=TRUE, label.size = 2, cells=colnames(datFACS), cols=colsH) + NoLegend() + 
+      ggtitle("FACS cells") + xlim(xl) + ylim(yl) 
+p4 <- DimPlot(object = brain.integrated, group.by = "celltype",  reduction = "umap", 
+       pt.size = 1, label=TRUE, label.size = 2, cells=colnames(datPS), cols=colsH) + NoLegend() + 
+      ggtitle("Original PS clusters") + xlim(xl) + ylim(yl)
+plot_grid(p1, p2,  p4, ncol=3)
+# write.csv(brain.integrated@reductions$umap@cell.embeddings, file=file.path(data_folder, "seurat_mouse_sct.csv"))
+```
+
+```{r qc plot2, fig.height=7,fig.width=8}
+biTmp  <- subset(brain.integrated, cells = colnames(datPS))
+biTmp@meta.data <- cbind(biTmp@meta.data,as.data.frame(annoPS))
+features2 <- c("nFeature_RNA","marker_sum_norm_label",
+  "topLeafValue_label", "contam_sum_label"
+  )
+FeaturePlot(object = biTmp, reduction = "umap", pt.size = 2, features = features2, ncol=2)
+# ggsave("qc_feature_umap_L1human.pdf",height=8,width=8)
+```
