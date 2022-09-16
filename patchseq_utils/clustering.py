@@ -3,6 +3,7 @@ from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.impute import SimpleImputer, KNNImputer
 from sklearn.preprocessing import RobustScaler, StandardScaler, PowerTransformer
 from sklearn.mixture import GaussianMixture
+from sklearn.model_selection import cross_validate, RepeatedStratifiedKFold
 import sklearn.metrics as metrics
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -38,14 +39,21 @@ def weighted_f1(y_true, y_pred):
 def score_feature_set_gmm(pipe, data, features, cluster_var, cluster_name, scorers, seed=0):
     y_true = data[cluster_var]==cluster_name
     np.random.seed(seed)
-    y_pred = pipe.fit_predict(data[features])
-    i_true = int(np.mean(y_pred[y_true]) > 0.5)
-    return {sc.__name__: sc(y_true, y_pred==i_true) for sc in scorers}
+    if hasattr(pipe, 'fit_predict'):
+        y_pred = pipe.fit_predict(data[features], y_true)
+        i_true = int(np.mean(y_pred[y_true]) > 0.5)
+        scores = {name: sc(y_true, y_pred==i_true) for name, sc in scorers.items()}
+    else:
+        cv = RepeatedStratifiedKFold()
+        scorers = {x: metrics.make_scorer(y) for x, y in scorers.items()}
+        scores = cross_validate(pipe, data[features], y_true, scoring=scorers)
+        scores = {name: np.mean(scores[f"test_{name}"]) 
+                  for name in scorers.keys()}
+    return scores
 
 def plot_feature_set_gmm(pipe, data, features, cluster_var, cluster_name, feature_names=None, palette=None, ax=None):
     y_true = data[cluster_var]==cluster_name
-    gmm = pipe
-    gmm.fit(data[features], y_true)
+    pipe.fit(data[features], y_true)
     plot_2d_classifier(pipe, data, y_true, features, cluster_name, feature_names, palette, ax)
     
 def plot_2d_classifier(pipe, data, y_true, features, cluster_name, feature_names=None, palette=None, ax=None):
@@ -60,18 +68,18 @@ def plot_2d_classifier(pipe, data, y_true, features, cluster_name, feature_names
         ax.set_xlabel(features[0].replace('norm_','').replace('_hero',''))
         ax.set_ylabel(features[1].replace('norm_','').replace('_hero',''))
     ax.set_title(cluster_name)
-    ax.set_xlim(-2,2)
-    ax.set_ylim(-2,2)
+    # ax.set_xlim(-2,2)
+    # ax.set_ylim(-2,2)
     plot_prob(ax, pipe)
     
     
-def plot_prob(ax, gmm):
+def plot_prob(ax, pipe):
     # class 0 and 1 : areas
     nx, ny = 200, 100
     x_min, x_max = ax.get_xlim()
     y_min, y_max = ax.get_ylim()
     xx, yy = np.meshgrid(np.linspace(x_min, x_max, nx), np.linspace(y_min, y_max, ny))
-    Z = gmm.predict_proba(np.c_[xx.ravel(), yy.ravel()])
+    Z = pipe.predict_proba(np.c_[xx.ravel(), yy.ravel()])
     # Z = Z/np.sum(Z, axis=1)
     zz = Z[:, 1].reshape(xx.shape)
     plt.sca(ax)
@@ -79,25 +87,13 @@ def plot_prob(ax, gmm):
     ax.contour(xx, yy, zz, [0.5], linewidths=2.0, colors="white")
     return img
     
-def plot_ellipses(ax, gmm):
-    for n in range(gmm.means_.shape[0]):
-        covariances =  gmm.covariances_[n][:2, :2]
-        v, w = np.linalg.eigh(covariances)
-        u = w[0] / np.linalg.norm(w[0])
-        angle = np.arctan2(u[1], u[0])
-        angle = 180 * angle / np.pi  # convert to degrees
-        v = 2.0 * np.sqrt(2.0) * np.sqrt(v)
-        ell = mpl.patches.Ellipse(
-            gmm.means_[n, :2], v[0], v[1], 180 + angle,
-        )
-        ell.set_clip_box(ax.bbox)
-        ell.set_alpha(0.5)
-        ax.add_artist(ell)
-    ax.set_aspect("equal", "datalim")
 
 from itertools import combinations
 def cluster_combinations_gmm(pipe, data, features, cluster_var, cluster_name, n_repeat=1):
-    scorers = [metrics.f1_score, metrics.accuracy_score, weighted_f1]
+    scorers = {'f1_score': metrics.f1_score, 
+               'accuracy_score': metrics.accuracy_score, 
+               # 'weighted_f1': weighted_f1
+              }
     records = []
     for i in range(n_repeat):
         for feature in features:
@@ -109,7 +105,8 @@ def cluster_combinations_gmm(pipe, data, features, cluster_var, cluster_name, n_
             records.append(dict(features=', '.join(features), **scores))
 
     df = pd.DataFrame.from_records(records)
-    return df.sort_values('f1_score', ascending=False)
+    df = df.sort_values('f1_score', ascending=False)
+    return df
 
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.preprocessing import LabelBinarizer

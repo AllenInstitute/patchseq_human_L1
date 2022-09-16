@@ -61,8 +61,6 @@ def filter_shiny_data(shiny_df, drop_offpipeline=True, nms_pass=True):
 
 def load_genes_shiny(genes, species=None, directory=None, csv_path=None, drop_offpipeline=False, nms_pass=False, join_on='sample_id'):
     shiny_df = _load_shiny_data(species, directory, csv_path)
-
-    
     genes_df = pd.read_feather(os.path.join(directory, 'data.feather'), columns=genes+[join_on]).set_index(join_on)
     shiny_df = shiny_df.join(genes_df, on=join_on)
     shiny_df = filter_shiny_data(shiny_df, drop_offpipeline=drop_offpipeline, nms_pass=nms_pass)

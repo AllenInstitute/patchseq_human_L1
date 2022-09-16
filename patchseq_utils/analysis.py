@@ -186,7 +186,8 @@ def plot_box_cluster_feature(data, y, x='cluster', x_fine=None, label=None, ax=N
     xlabels = [text.get_text() for text in ax.get_xmajorticklabels()]
     if label_counts:
         counts = data[x].value_counts()
-        newlabels = [f"$\it{{{name}}}$\n(N={counts.loc[name]})" 
+        newlabels = [f"{name}\n(N={counts.loc[name]})" if name!=drop_box
+                     else name
                      for name in xlabels]
         newlabels = [name.replace(' ','\\ ') for name in newlabels]
         ax.set_xticklabels(newlabels, rotation=90, ha='center',)
@@ -194,7 +195,7 @@ def plot_box_cluster_feature(data, y, x='cluster', x_fine=None, label=None, ax=N
             for xtick, name in zip(ax.get_xticklabels(), xlabels):
                 xtick.set_color(palette[name])
     else:
-        ax.set_xticklabels(xlabels, rotation=45, fontstyle='italic', ha='right')
+        ax.set_xticklabels(xlabels, rotation=45, ha='right')
     min = data[y].min()
     max = data[y].max()
     if (min>0) and ((min>2) or not ((max<2) and (min>0.4))):
@@ -616,3 +617,17 @@ def subgroup_comparisons(df, features, group_var, compare, groups=None, fdr_meth
         records.append(dict(feature=feature, sig_groups=sig_groups, **pval_results))
     results = pd.DataFrame.from_records(records).set_index('feature')
     return results
+
+import scipy.stats as stats
+
+def df_fisher(df, cluster, meta, cluster_name, test=stats.fisher_exact):
+    ct = pd.crosstab(df[meta], df[cluster]==cluster_name)
+    out = test(ct)
+    
+    return out.pvalue if hasattr(out, 'pvalue') else out[1]
+
+def fisher_test_all(df, cluster, meta, test=stats.fisher_exact):
+    df = df.dropna(subset=[cluster])
+    names = df[cluster].unique()
+    return pd.Series({cluster_name: df_fisher(df, cluster, meta, cluster_name, test) 
+           for cluster_name in names}).sort_values()

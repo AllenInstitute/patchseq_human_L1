@@ -125,14 +125,13 @@ def plot_dprime(clf, data, features, cluster='t-type',  cluster_list=None,
                                            metric=metric, method=method, cv=cv)
     if cluster_list is not None:
         dprime = dprime.reindex(index=cluster_list, columns=cluster_list)
-    ax = sns.heatmap(dprime, cmap='rocket_r', vmin=0, vmax=3, cbar=True)
+    ax = sns.heatmap(dprime, cmap='viridis_r', vmin=0, vmax=3, cbar=True)
     if dprime.isna().any(axis=None):
         ax.patch.set_edgecolor('lightgrey')
         ax.patch.set_hatch('//')
     plt.axis('equal')
     # ax.set_frame_on(True)
     [s.set_visible(False) for s in ax.spines.values()]
-    plt.show()
     return dprime
 
 def plot_dprime_tree(clf, data, features, cluster,**kwargs):

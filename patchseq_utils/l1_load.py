@@ -16,9 +16,9 @@ palette_human = {names_update[shorten_name(key)]: val for key, val in palette_hu
                 if shorten_name(key) in names_update}
 palette_mouse = shiny.get_shiny_palette('mouse')
 palette_subclass =  {
-'PAX6': '#e3b5c7',
 'LAMP5': '#e68553',
 'MC4R': '#ae1e3d',
+'PAX6': '#e3b5c7',
 'L1 VIP': '#6c00bf',
 'other': 'grey',
 }
@@ -51,17 +51,17 @@ mouse_depth.layer = mouse_depth.layer.fillna('').apply(lambda x: x[5:] if x else
 human_depth.layer = human_depth.layer.fillna('').apply(lambda x: x[5:] if x else None)
 
 homology = {
-    'PAX6':{
-        'mouse':['Lamp5 Krt73'],
-        'human':['Inh L1-2 PAX6 CDH12', 'Inh L1-2 PAX6 TNFAIP8L3']
-    },
     'LAMP5':{
         'mouse':['Lamp5 Lsp1', 'Lamp5 Plch2 Dock5', 'Lamp5 Ntn1 Npy2r'],
         'human':['Inh L1-6 LAMP5 LCP2', 'Inh L1-2 LAMP5 DBP', 'Inh L1 SST NMBR']
     },
     'MC4R':{
-        'mouse':['Lamp5 Fam19a1 Pax6', 'Lamp5 Fam19a1 Tmem182'],
+        'mouse':['Lamp5 Fam19a1 Tmem182', 'Lamp5 Fam19a1 Pax6'],
         'human':['Inh L1 SST CHRNA4', 'Inh L1-2 GAD1 MC4R']
+    },
+    'PAX6':{
+        'mouse':['Lamp5 Krt73'],
+        'human':['Inh L1-2 PAX6 CDH12', 'Inh L1-2 PAX6 TNFAIP8L3']
     },
     'L1 VIP':{
         'mouse':['Sncg Vip Nptx2', 'Vip Col15a1 Pde1a'],

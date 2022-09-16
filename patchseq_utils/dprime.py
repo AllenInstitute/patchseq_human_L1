@@ -95,6 +95,14 @@ def zinb_dprime(data, type_list, type_labels,
         n_folds=n_folds,
         r=r, a=a, mu0=mu0, reg_num=reg_num, reg_den=reg_den)
 
+def zinb_dprime_fit_phi(data, type_list, type_labels,
+        spaced_log_mu=None, pi_lookup=None, phi_lookup=None,
+        n_folds=5, reg_num=1e-4, reg_den=1):
+
+    return cv_dprime(data, type_list, type_labels,
+        params_from_reg_fit, _zi_negative_binomial_ll_ratios_var_phi,
+        spaced_log_mu=spaced_log_mu, pi_lookup=pi_lookup, phi_lookup=phi_lookup,
+        n_folds=n_folds, reg_num=reg_num, reg_den=reg_den)
 
 def mv_gaussian_dprime(data, type_list, type_labels,
         n_folds=5, gaussian_type="full"):
@@ -193,7 +201,7 @@ def cv_dprime(data, type_list, type_labels, estimator, ll_ratio_func,
 
             x1 = data[test1_ind, :]
             x2 = data[test2_ind, :]
-
+            
             ll_ratio1 += ll_ratio_func(x1, est_out1, est_out2, **kwargs)
             ll_ratio2 += ll_ratio_func(x2, est_out1, est_out2, **kwargs)
 
@@ -233,6 +241,26 @@ def _regularized_nb_prob(train_data, reg_num, reg_den, r, **kwargs):
     mu = (reg_num + train_sum) / (reg_den + train_n)
     return mu / (r + mu)
 
+def params_from_reg_fit(train_data, reg_num, reg_den, spaced_log_mu=None, pi_lookup=None, phi_lookup=None, **kwargs):
+    train_sum = train_data.sum(axis=0)
+    train_n = train_data.shape[0]
+
+    # Regularized estimates of mean and variance
+    mu_obs = (reg_num + train_sum) / (reg_den + train_n)
+    # var_obs = train_data.var(axis=0) + reg_num
+
+    x = 10**spaced_log_mu
+    obs_x = (1 - pi_lookup) * x
+    # x_inds = np.searchsorted(x, mu_obs)
+    obs_inds = np.searchsorted(obs_x, mu_obs)
+    obs_inds[obs_inds == len(x)] = len(x) - 1
+    fit_mu = x[obs_inds]
+    fit_phi = phi_lookup[obs_inds]
+    fit_pi = pi_lookup[obs_inds]
+    # pi = logistic_func(np.log10(mu), *params)
+    fit_r = 1/fit_phi
+    fit_p = fit_mu / (fit_r + fit_mu)
+    return fit_p, fit_pi, fit_r
 
 def _regularized_zinb_prob(train_data, reg_num, reg_den, r, a, mu0, **kwargs):
     """Zero-inflated negative binomial probability based on regularized mean expression.
@@ -314,6 +342,32 @@ def _zi_negative_binomial_ll_ratios(x, zinb1, zinb2, r, **kwargs):
         np.ma.array(ll_ratio_nz_per_gene, mask=mask_for_nonzeros).sum(axis=1))
     return ll_ratio_total.tolist()
 
+from scipy.special import loggamma
+def _zi_negative_binomial_ll_ratios_var_phi(x, zinb1, zinb2, **kwargs):
+    """Log-likehood ratios for each sample in x using two zero-inflated negative binomial models"""
+    p1, pi1, r1 = zinb1
+    p2, pi2, r2 = zinb2
+
+    mask_for_nonzeros = x == 0
+    mask_for_zeros = x > 0
+
+    # log-likelihood of zero counts doesn't depend on x (since x is zero)
+    ll_ratio_z_per_gene = (
+        np.log(pi1 + (1 - pi1) * np.power(1 - p1, r1)) -
+        np.log(pi2 + (1 - pi2) * np.power(1 - p2, r2))
+    )
+    # log-likelihood of nonzero counts
+    ll_ratio_nz_per_gene = (
+        loggamma(x+r1) - loggamma(x+r2)
+        -(loggamma(r1) - loggamma(r2)) +
+        x * (np.log(p1) - np.log(p2)) +
+        (r1*np.log(1 - p1) - r2*np.log(1 - p2)) +
+        (np.log(1 - pi1) - np.log(1 - pi2))
+    )
+
+    ll_ratio_total = (np.ma.array(np.broadcast_to(ll_ratio_z_per_gene, x.shape), mask=mask_for_zeros).sum(axis=1) +
+        np.ma.array(ll_ratio_nz_per_gene, mask=mask_for_nonzeros).sum(axis=1))
+    return ll_ratio_total.tolist()
 
 def _estimate_mv_gaussian_full(train_data, reg_covar=1e-6, **kwargs):
     """Gaussian multivariate parameter estimates (full covariance matrix)"""

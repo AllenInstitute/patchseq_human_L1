@@ -147,7 +147,9 @@ def get_full_mouse_metadata_df():
         lambda df:  
         (df['collection'] == "Patch-seq Production") &
         df['project_code'].isin(['mIVSCC-MET', 'mIVSCC-METx']) 
-        & (df.structure.str.contains('VIS') | df.structure.str.contains('TEa'))
+        & (df.structure.str.contains('VIS') 
+           # | df.structure.str.contains('TEa')
+          )
     ]
     shiny_mouse['target_layer'] = shiny_mouse.layer.fillna('').apply(get_num)
     shiny_mouse.drop(columns=['layer'], inplace=True)
@@ -162,7 +164,7 @@ def get_full_mouse_metadata_df():
                                         (df.Tree_call!='PoorQ') &
                                         (df.rna_amp_pass_fail == "Pass")
                                        , axis=1)
-    return shiny_df
+    return shiny_mouse
 
 
 def get_shiny(species, nms_pass=True):

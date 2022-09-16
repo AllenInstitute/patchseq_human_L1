@@ -37,7 +37,7 @@ def box_strip(data, x, y, hue=None, size=3, ax=None, strip_width=0.2, label_coun
     if label_counts:
         counts = data[x].value_counts()
         xlabels = [f"{name} ({counts.loc[name]})" for name in xlabels]
-    ax.set_xticklabels(xlabels, rotation=45, fontstyle='italic', ha='right')# if len(xlabels)>=8 else 'center'
+    ax.set_xticklabels(xlabels, rotation=45, ha='right')# if len(xlabels)>=8 else 'center'
 
     if transparent:
         utils.outline_boxplot(ax)
@@ -62,18 +62,28 @@ def plot_nested_comparisons(data, x, y, compare, test_subgroups=True, fdr_method
                 x_pair = [i-dodge_delta, i+dodge_delta]
                 utils.plot_sig_bar(res[group].values[0], y0, x_pair, bar=bar, label=sig_label, ax=ax)
 
-def plot_subclass_focus(df, y, x, ax, subclass, label=None, cluster="t-type",
-                        palette=palette_subclass, palette_fine=palette_human, **kwargs):
+def plot_subclass_focus(df, y, x, ax, subclasses, label=None, cluster="t-type", drop_box='other',
+                        palette=palette_subclass, palette_fine=palette_human, order=None,
+                        pairs=None, test='mannwhitney', cutoff=0.05, fdr_method='fdr_bh',
+                        **kwargs):
     s = 4
-    data=df.query(f"{x}=='{subclass}'").copy().pipe(remove_unused_categories)
-    box_strip(data=data, ax=ax, x=x, size=s,
-                   y=y, hue=cluster, palette=palette_fine, dodge=True, legend=False, transparent=False,
-                  order=palette.keys())
+    if order is None:
+        order = palette.keys()
+        order = df[x].cat.categories
+    for sub in subclasses:
+        data=df.query(f"{x}=='{sub}'").copy().pipe(remove_unused_categories)
+        box_strip(data=data, ax=ax, x=x, size=s,
+                    y=y, hue=cluster, palette=palette_fine, dodge=True, legend=False, transparent=False,
+                    order=order)
 
-    data=df.query(f"{x}!='{subclass}'").copy()
-    utils.plot_box_cluster_feature(data, y, x, x_fine=cluster, ax=ax, size=s, label=label,
-                                   drop_box='other', label_counts=False,
-                                   palette_fine=palette_fine, palette=palette, **kwargs)
+    data=df[~df[x].isin(subclasses)].copy()
+    args = dict(size=s, label=label, drop_box=drop_box, label_counts=False, 
+                palette_fine=palette_fine, palette=palette)
+    args.update(**kwargs)
+    utils.plot_box_cluster_feature(data, y, x, x_fine=cluster, ax=ax, pairs=None, **args)
+    if pairs is not None:
+        utils.plot_test_bars(df, y, x, test=test, group_vals=None, pairs=pairs, fdr_method=fdr_method,
+                       ax=ax, cutoff=cutoff, label=None)
 
 def plot_scatter(*args, legend=False, figsize=(8,8), **kwargs):
     plt.figure(figsize=figsize)
