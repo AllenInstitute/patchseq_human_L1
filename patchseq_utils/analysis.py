@@ -626,8 +626,11 @@ def df_fisher(df, cluster, meta, cluster_name, test=stats.fisher_exact):
     
     return out.pvalue if hasattr(out, 'pvalue') else out[1]
 
-def fisher_test_all(df, cluster, meta, test=stats.fisher_exact):
+def fisher_test_all(df, cluster, meta, test=stats.fisher_exact, fdr_method='fdr_bh'):
     df = df.dropna(subset=[cluster])
     names = df[cluster].unique()
-    return pd.Series({cluster_name: df_fisher(df, cluster, meta, cluster_name, test) 
+    results = pd.Series({cluster_name: df_fisher(df, cluster, meta, cluster_name, test) 
            for cluster_name in names}).sort_values()
+    if fdr_method is not None:
+        results = pd.Series(multipletests(results, method=fdr_method)[1], index=results.index)
+    return results

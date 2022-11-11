@@ -20,7 +20,9 @@ struct.acronym AS structure,
 hemispheres.name AS hemisphere,
 donors.name AS donor_name, 
 -- donors.full_genotype,
--- ages.name AS donor_age, 
+ages.name AS donor_age, 
+genders.name AS donor_sex,
+organisms.name AS species,
 dt.name AS dendrite_type,
 im.name AS img_status,
 layer.name AS layer,
@@ -36,6 +38,8 @@ LEFT JOIN ephys_roi_results err ON sp.ephys_roi_result_id = err.id
 LEFT JOIN projects ON projects.id = sp.project_id
 LEFT JOIN donors ON donors.id = sp.donor_id
 LEFT JOIN ages ON donors.age_id = ages.id
+LEFT JOIN genders ON donors.gender_id = genders.id
+LEFT JOIN organisms ON donors.organism_id = organisms.id
 LEFT JOIN structures struct ON sp.structure_id = struct.id
 LEFT JOIN hemispheres ON sp.hemisphere_id = hemispheres.id
 LEFT JOIN structures layer ON sp.cortex_layer_id = layer.id

@@ -27,7 +27,7 @@ species_palette = palette = {
     'mouse':'tab:grey',
 }
 date = "2022_06_22"
-date = "2022_09_06"
+date = "2022_09_16"
 human_df = pd.read_csv(f"~/projects/human_l1/human_l1_dataset_{date}.csv", index_col=0,
                       dtype = {'layer_lims': str, 'target_layer': str})
 human_ephys = pd.read_csv(datadir/"aibs"/"features_E.csv", index_col=0)
