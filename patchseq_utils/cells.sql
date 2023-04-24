@@ -15,6 +15,7 @@ with dendrite_type as
     ORDER BY sts.specimen_id, st.name DESC
     )
 SELECT sp.id, sp.name, sp.created_at, 
+csl.z AS pin_z,
 csl.normalized_depth, csl.soma_depth_um,
 struct.acronym AS structure, 
 hemispheres.name AS hemisphere,

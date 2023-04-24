@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-from scipy.stats import mannwhitneyu
+import scipy.stats as stats
 from itertools import combinations
 import statsmodels.formula.api as smf
 from statsmodels.stats.multitest import multipletests
@@ -602,23 +602,26 @@ def subgroup_comparisons(df, features, group_var, compare, groups=None, fdr_meth
     records = []
     for feature in features:
         pvals = {}
+        stat_results = {}
         for group in groups:
             data = df.loc[df[group_var]==group]
             grouped = data.dropna(subset=[compare, feature]).groupby(compare)
             subsets = [x[feature] for _, x in grouped]
             if len(subsets) == 2:
                 u, pval_mw = stats.mannwhitneyu(*subsets)
-                pvals[group] = pval_mw
+                pvals[f"{group}"] = pval_mw
+                m, n = map(len, subsets)
+                rho = u/(m*n)
+                stat_results[f"auc_{group}"] = rho
+                stat_results[f"md_auc_{group}"] = mwu_mde_rho(m, n)
         pval_vals = np.array(list(pvals.values()))
         if fdr_method is not None:
             pval_vals = multipletests(pval_vals, method=fdr_method)[1]
-        pval_results = dict(zip(pvals.keys(), pval_vals))
+            pvals = dict(zip(pvals.keys(), pval_vals))
         sig_groups = ", ".join(np.array(list(pvals.keys()))[pval_vals < cutoff])
-        records.append(dict(feature=feature, sig_groups=sig_groups, **pval_results))
+        records.append(dict(feature=feature, sig_groups=sig_groups, **pvals, **stat_results))
     results = pd.DataFrame.from_records(records).set_index('feature')
     return results
-
-import scipy.stats as stats
 
 def df_fisher(df, cluster, meta, cluster_name, test=stats.fisher_exact):
     ct = pd.crosstab(df[meta], df[cluster]==cluster_name)
@@ -634,3 +637,26 @@ def fisher_test_all(df, cluster, meta, test=stats.fisher_exact, fdr_method='fdr_
     if fdr_method is not None:
         results = pd.Series(multipletests(results, method=fdr_method)[1], index=results.index)
     return results
+
+from scipy.optimize import root_scalar
+# avoid recalculating MWU PMF values
+from scipy.stats._mannwhitneyu import _MWU as MWU
+mwu = MWU()
+
+def mwu_critical_u(m, n, p_cutoff=0.05, two_sided=True):
+    pmfs = mwu.pmf(np.arange(0, m*n//2), m, n)
+    cdfs = np.cumsum(pmfs)
+    if two_sided: p_cutoff /= 2
+    return np.flatnonzero(cdfs > p_cutoff)[0] - 1
+
+def mwu_power(m, n, rho):
+    U = mwu_critical_u(m, n)
+    rho = min(rho, 1-rho)
+    return stats.binom.cdf(U, m*n, rho)
+
+def mwu_mde_rho(m, n, power=0.8):
+    if mwu_power(m, n, 1) < power:
+        return 1
+    f = lambda rho: mwu_power(m, n, rho) - power
+    res = root_scalar(f, bracket=(0.5, 1))
+    return res.root

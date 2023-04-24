@@ -123,6 +123,9 @@ def plot_dprime(clf, data, features, cluster='t-type',  cluster_list=None,
     dprime, _ = pairwise_cluster_distances(clf, data, features, cluster, 
                                     fit_pairwise=True, details=False, 
                                            metric=metric, method=method, cv=cv)
+    return plot_dprime_data(dprime, cluster_list)
+                     
+def plot_dprime_data(dprime, cluster_list=None):
     if cluster_list is not None:
         dprime = dprime.reindex(index=cluster_list, columns=cluster_list)
     ax = sns.heatmap(dprime, cmap='viridis_r', vmin=0, vmax=3, cbar=True)
