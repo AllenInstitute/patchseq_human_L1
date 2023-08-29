@@ -54,7 +54,7 @@ def plot_sag(dataset, sweeps, n_max=3, scalebar=False, offset=0, **kwargs):
     sweepset = dataset.sweep_set(sweeps["sweep_number"].iloc[:n_max])
     plot_sweeps_thumb(sweepset, scalebar=scalebar, offset=offset, **kwargs)
     
-def plot_hero(dataset, sweeps, n_max=1, scalebar=False, offset=0, **kwargs):
+def plot_hero_sweep(dataset, sweeps, n_max=1, scalebar=False, offset=0, **kwargs):
     sweeps = sweeps.query("stimulus_amplitude > 0 & spiking")
     sweeps = sweeps.sort_values("stimulus_amplitude", ascending=True)
     amp = sweeps["stimulus_amplitude"]
@@ -83,18 +83,20 @@ def plot_rheo(dataset, sweeps, scalebar=False, offset=0, plot_peri=False, **kwar
         
     plot_sweeps_thumb(sweepset, scalebar=scalebar, offset=offset, **kwargs)
 
-def plot_sweep_panel(dataset, sweeps, scalebar=False, plot_peri=False, figsize=(4,4), ax=None, **args):
+def plot_sweep_panel(dataset, sweeps, scalebar=False, plot_peri=False, plot_hero=True,
+                     figsize=(4,4), ax=None, **args):
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
     # ax.set_prop_cycle('color',plt.cm.cool(np.linspace(0,1,4)))
     ax.set_prop_cycle('alpha',np.linspace(1,0.4,4))
     plt.sca(ax)
-    plot_sag(dataset, sweeps, n_max=1, **args)
+    plot_sag(dataset, sweeps, n_max=1, scalebar=scalebar, **args)
     plot_rheo(dataset, sweeps, plot_peri=plot_peri, **args)
-    plot_hero(dataset, sweeps, scalebar=scalebar, offset=20, **args)
+    if plot_hero:
+        plot_hero_sweep(dataset, sweeps, offset=20, **args)
         
 def plot_sweeps_thumb(sweepset, scalebar=False, xmin=-0.05, xmax=1.15, offset=0, 
-                      dy=None, loc=None, **kwargs):
+                      dy=None, loc='lower left', **kwargs):
     sweepset.select_epoch("recording")
     sweepset.align_to_start_of_epoch("stim")
     nblock = 10
@@ -118,9 +120,20 @@ def plot_sweeps_thumb(sweepset, scalebar=False, xmin=-0.05, xmax=1.15, offset=0,
     #     h = y1-y0
     #     set_size(w/scale_factor, h/scale_factor, ax=ax)
 
+def plot_rheo_spikes(dataset, sweeps, scalebar=False, offset=0, **kwargs):
+    sweeps = sweeps.query("stimulus_amplitude > 0")
+    sweeps = sweeps.sort_values("stimulus_amplitude", ascending=True)
+    if sweeps["spiking"].sum() > 0:
+        rheo_i = sweeps.index.get_loc(sweeps[sweeps["spiking"]].index[0])
+        sweep = dataset.sweep(sweeps["sweep_number"].values[rheo_i])
+    else:
+        return
+    plot_sweep_spikes(sweep, scalebar=scalebar, offset=offset, **kwargs)
+
 from ipfx.spike_detector import detect_putative_spikes
 
-def plot_sweep_spikes(sweep, nspikes=[0], offset=3.5, pre=1, post=2, dy=None, scalebar=False, **kwargs):
+def plot_sweep_spikes(sweep, nspikes=[0], offset=3.5, pre=1, post=2, dy=None, 
+                      scalebar=False, loc=None, **kwargs):
     sweep.select_epoch("stim")
     spikes = detect_putative_spikes(sweep.v, sweep.t)
     nblock = 3
@@ -140,8 +153,11 @@ def plot_sweep_spikes(sweep, nspikes=[0], offset=3.5, pre=1, post=2, dy=None, sc
         y0, y1 = ax.get_ylim()
         plt.ylim(y1-dy, y1)
     if scalebar:
-        add_scalebar(ax, matchx=False, matchy=False, sizex=0.5, labelx='0.5 s',
-                    sizey=10, labely='10 mV', textprops=dict(size='large', weight='bold'))
+        add_scalebar(ax, loc=loc, matchx=False, matchy=False, sizex=1, 
+                    sizey=20, textprops=dict(size='large', weight='bold'))
+    # if scalebar:
+    #     add_scalebar(ax, matchx=False, matchy=False, sizex=0.5, labelx='0.5 s',
+    #                 sizey=10, labely='10 mV', textprops=dict(size='large', weight='bold'))
 
 def set_size(w, h, ax=None):
     """ w, h: width, height in inches """

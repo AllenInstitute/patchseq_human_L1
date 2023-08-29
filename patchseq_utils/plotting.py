@@ -2,7 +2,7 @@ from . import analysis as utils
 from .plot import sweeps as ps
 from .plot import morphology as pm
 from .l1_load import palette_human, palette_subclass
-from .util import remove_unused_categories
+from .util import remove_unused_categories, projectdir
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -66,24 +66,29 @@ def plot_subclass_focus(df, y, x, ax, subclasses, label=None, cluster="t-type", 
                         palette=palette_subclass, palette_fine=palette_human, order=None,
                         pairs=None, test='mannwhitney', cutoff=0.05, fdr_method='fdr_bh',
                         **kwargs):
+    df = remove_unused_categories(df.dropna(subset=[x,y]).copy())
     s = 4
     if order is None:
         order = palette.keys()
         order = df[x].cat.categories
     for sub in subclasses:
         data=df.query(f"{x}=='{sub}'").copy().pipe(remove_unused_categories)
-        box_strip(data=data, ax=ax, x=x, size=s,
+        if len(data) > 0:
+            box_strip(data=data, ax=ax, x=x, size=s,
                     y=y, hue=cluster, palette=palette_fine, dodge=True, legend=False, transparent=False,
                     order=order)
 
     data=df[~df[x].isin(subclasses)].copy()
-    args = dict(size=s, label=label, drop_box=drop_box, label_counts=False, 
-                palette_fine=palette_fine, palette=palette)
-    args.update(**kwargs)
-    utils.plot_box_cluster_feature(data, y, x, x_fine=cluster, ax=ax, pairs=None, **args)
+    if len(data) > 0:
+        args = dict(size=s, label=label, drop_box=drop_box, label_counts=False, 
+                    palette_fine=palette_fine, palette=palette)
+        args.update(**kwargs)
+        utils.plot_box_cluster_feature(data, y, x, x_fine=cluster, ax=ax, pairs=None, **args)
     if pairs is not None:
         utils.plot_test_bars(df, y, x, test=test, group_vals=None, pairs=pairs, fdr_method=fdr_method,
-                       ax=ax, cutoff=cutoff, label=None)
+                    ax=ax, cutoff=cutoff, label=None)
+    utils.outline_boxplot(ax)
+    ax.set_xlabel(None)
 
 def plot_scatter(*args, legend=False, figsize=(8,8), **kwargs):
     plt.figure(figsize=figsize)
@@ -96,7 +101,7 @@ def plot_scatter(*args, legend=False, figsize=(8,8), **kwargs):
 #     trace/morph panels
 file_mappings = {
     'Gabor': lambda sample_id: f"/home/tom.chartrand/projects/data/u01/tamas/converted/{sample_id}.nwb",
-    'Huib': lambda sample_id: f"/home/tom.chartrand/projects/data/u01/mansvelder/final/{sample_id}.nwb",
+    'Huib': lambda sample_id: f"/home/tom.chartrand/projects/data/u01/mansvelder/nwb2/{sample_id}.nwb",
     'AIBS':None
 }
 output_mappings = {
@@ -105,21 +110,28 @@ output_mappings = {
     'AIBS': lambda sample_id: f"/home/tom.chartrand/projects/data/u01/aibs/output/{sample_id}.json"
 }
 
-def plot_trace_morph(cell, df, palette=palette_human, ttype=None, save=False, plot_peri=False, scale_factor=100, scalebar=True, **kwargs):
+def plot_trace_morph(cell, df, palette=palette_human, ttype=None, 
+                     ephys=True, morph=True,
+                     save=False, plot_peri=False, plot_hero=True,
+                     scale_factor=100, 
+                     scalebar=True, **kwargs):
     cell_entry = df.loc[cell]
     ttype_name = cell_entry["t-type"]
     ttype = ttype or ttype_name.split(' ')[-1]
-    if cell_entry['has_morph']:
+    if morph and cell_entry['has_morph']:
         print(f"{cell} morph")
         try:
             pm.plot_cell_lims(cell, scale_factor=scale_factor, scalebar=scalebar, 
                               color=palette[ttype_name], **kwargs)
+            if save:
+                plt.savefig(projectdir/'figures'/f'{ttype}_{cell}_morph.svg', 
+                            bbox_inches='tight', transparent=True)
             plt.show()
         except Exception as exc:
             print(exc)
 
     
-    if cell_entry['has_ephys']:
+    if ephys and cell_entry['has_ephys']:
         print(f"{cell} ephys")
         try:
             if 'collaborator' not in cell_entry or cell_entry['collaborator']=='AIBS':
@@ -131,8 +143,43 @@ def plot_trace_morph(cell, df, palette=palette_human, ttype=None, save=False, pl
     #         ps.plot_hero(dataset, sweeps, color=palette_human[ttype_name])
     #         ps.plot_sag(dataset, sweeps, color=palette_human[ttype_name], n_max=1)
             if len(sweeps) > 0:
-                ps.plot_sweep_panel(dataset, sweeps, 
+                ps.plot_sweep_panel(dataset, sweeps, scalebar=scalebar, plot_hero=plot_hero,
                          plot_peri=plot_peri,color=palette[ttype_name])
-                plt.show()
+            if save:
+                plt.savefig(projectdir/'figures'/f'{ttype}_{cell}_ephys.svg', 
+                            bbox_inches='tight', transparent=True)
+            plt.show()
         except Exception as exc:
             print(exc)
+
+import numpy as np
+from scipy.stats import spearmanr, pearsonr
+from statsmodels.nonparametric.smoothers_lowess import lowess
+from sklearn.isotonic import IsotonicRegression
+def plot_corr(data, x, y, spearman=True, smooth=True, ax=None, include_metrics=False, **kwargs):
+    if ax is None:
+        fig, ax = plt.subplots()
+    if spearman:
+        corr, p = spearmanr(data[x], data[y], nan_policy='omit')
+    else:
+        corr, p = pearsonr(data[x], data[y])
+    if not spearman:
+        sns.regplot(data=data, x=x, y=y, ax=ax)
+    sns.scatterplot(data=data, x=x, y=y, ax=ax, **kwargs)
+
+    if spearman:
+        if smooth:
+            smoothed = lowess(data[y], data[x])
+            ax.plot(*smoothed.T, 'grey')
+        else:        
+            xsmooth = np.linspace(min(data[x]), max(data[x]), 200)
+            ysmooth = IsotonicRegression(increasing='auto').fit(data[x], data[y]).predict(xsmooth)
+            ax.plot(xsmooth, ysmooth, 'grey')
+
+    summary = f"r={corr:.2g}, p={p:.2g}"
+    if include_metrics:
+        ax.text(0.5, 0.99, summary, transform=ax.transAxes,
+            verticalalignment='top', horizontalalignment='center')
+    else:
+        print(summary)
+    sns.despine()

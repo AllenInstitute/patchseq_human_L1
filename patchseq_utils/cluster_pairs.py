@@ -58,7 +58,9 @@ def pairwise_cluster_distances(clf, data, features, cluster_label,
                     clf.fit(X[subset, :], y_i)
                     decision_vars = getattr(clf, method)(X[subset, :])
                 else:
-                    decision_vars = cross_val_predict(clf, X[subset, :], y_i, method=method, cv=cv)
+                    n = np.count_nonzero(y_i)
+                    cv_adj = min(cv, n, len(y_i)-n) if type(cv) is int else cv
+                    decision_vars = cross_val_predict(clf, X[subset, :], y_i, method=method, cv=cv_adj)
                 y_pred = decision_vars[:,1]
 #                 y_pred = decision_vars[:,1] - decision_vars[:,0]
                 distances[i,j] = metric(y_i, y_pred)
@@ -112,30 +114,6 @@ def ova_cluster_distances(clf, data, features, cluster_label, n_feat=2,
             })
 
     return distances, records
-
-
-from scipy.cluster import hierarchy
-import seaborn as sns
-import matplotlib.pyplot as plt
-    
-def plot_dprime(clf, data, features, cluster='t-type',  cluster_list=None, 
-                metric=dprime, method='predict_proba', cv=None):
-    dprime, _ = pairwise_cluster_distances(clf, data, features, cluster, 
-                                    fit_pairwise=True, details=False, 
-                                           metric=metric, method=method, cv=cv)
-    return plot_dprime_data(dprime, cluster_list)
-                     
-def plot_dprime_data(dprime, cluster_list=None):
-    if cluster_list is not None:
-        dprime = dprime.reindex(index=cluster_list, columns=cluster_list)
-    ax = sns.heatmap(dprime, cmap='viridis_r', vmin=0, vmax=3, cbar=True)
-    if dprime.isna().any(axis=None):
-        ax.patch.set_edgecolor('lightgrey')
-        ax.patch.set_hatch('//')
-    plt.axis('equal')
-    # ax.set_frame_on(True)
-    [s.set_visible(False) for s in ax.spines.values()]
-    return dprime
 
 def plot_dprime_tree(clf, data, features, cluster,**kwargs):
     dist, _ = pairwise_cluster_distances(clf, data, features, cluster, 

@@ -5,8 +5,8 @@ from . import shiny, lims
 from .util import *
 
 
+repo_data = Path("../data/")
 datadir = Path("/home/tom.chartrand/projects/data/u01/")
-projectdir = Path('/home/tom.chartrand/projects/human_l1')
 figdir = projectdir/'figures'
 
 
@@ -31,26 +31,31 @@ date = "2022_09_16"
 date = "2023_02_06"
 human_df = pd.read_csv(projectdir/f"human_l1_dataset_{date}.csv", index_col=0,
                       dtype = {'layer_lims': str, 'target_layer': str})
-human_ephys = pd.read_csv(datadir/"aibs"/"features_E.csv", index_col=0)
-tamas_ephys = pd.read_csv(datadir/"tamas"/"features_E.csv", index_col=0)
-mansvelder_ephys = pd.read_csv(datadir/"mansvelder"/"features_E.csv", index_col=0)
+# human_ephys = pd.read_csv(datadir/"aibs"/"features_E.csv", index_col=0)
+# mansvelder_ephys = pd.read_csv(datadir/"mansvelder"/"features_E.csv", index_col=0)
+# tamas_ephys = pd.read_csv(datadir/"tamas"/"features_E.csv", index_col=0)
+human_ephys = pd.read_csv(repo_data/"aibs_features_E.csv", index_col=0)
+tamas_ephys = pd.read_csv(repo_data/"tamas_features_E.csv", index_col=0)
+mansvelder_ephys = pd.read_csv(repo_data/"mansvelder_features_E.csv", index_col=0)
 # human_depth = pd.read_csv(projectdir/'human_layer_depths_2022_09_02.csv', index_col='specimen_id').drop(columns=['Unnamed: 0'])
 human_depth = pd.read_csv(projectdir/f'human_layer_depths_{date}.csv', index_col='specimen_id')
-human_morph = pd.read_csv(projectdir/'RawFeatureWide_human+derivatives.csv', index_col='specimen_id').drop(columns=['Unnamed: 0'])
+human_morph = pd.read_csv(repo_data/'RawFeatureWide_human+derivatives.csv', index_col='specimen_id').drop(columns=['Unnamed: 0'])
 
 mouse_df = pd.read_csv(projectdir/f"mouse_l1_dataset_{date}.csv", index_col=0)
-mouse_ephys = pd.read_csv(datadir/"aibs_mouse/features_E.csv", index_col=0)
+# mouse_ephys = pd.read_csv(datadir/"aibs_mouse"/"features_E.csv", index_col=0)
+mouse_ephys = pd.read_csv(repo_data/"aibs_mouse_features_E.csv", index_col=0)
 mouse_depth = pd.read_csv(projectdir/'mouse_layer_depths_2022_09_02.csv', index_col='specimen_id').drop(columns=['Unnamed: 0'])
 ccf_depth = pd.read_csv(projectdir/'mouse_l1_dataset_2021_10_25_ccf_aligned_depths.csv', index_col=0)
-mouse_morph = pd.read_csv(projectdir/'RawFeatureWide_mouse+derivatives.csv', index_col='specimen_id').drop(columns=['Unnamed: 0'])
+mouse_morph = pd.read_csv(repo_data/'RawFeatureWide_mouse+derivatives.csv', index_col='specimen_id').drop(columns=['Unnamed: 0'])
 
 ephys_features = [feat for feat in human_ephys.columns
-                  # .intersection(mouse_ephys.columns) 
                   if 'qc' not in feat and 'fail' not in feat]
+assert set(mouse_ephys.columns) == set(human_ephys.columns)
 morph_features = human_morph.columns
 
 mouse_depth.layer = mouse_depth.layer.fillna('').apply(lambda x: x[5:] if x else None)
 human_depth.layer = human_depth.layer.fillna('').apply(lambda x: x[5:] if x else None)
+
 
 homology = {
     'LAMP5':{
@@ -97,6 +102,10 @@ mouse_df['homology_type'] = mouse_df[cluster].map(homology_mapping_mouse).astype
 # mouse_df[cluster] = mouse_df[cluster].astype(ttypes_mouse)
 # mouse_df['homology_type'] = mouse_df[cluster].map(homology_mapping_mouse).astype(homology_types)
 
+# units to microns
+human_morph['axon_emd_with_basal_dendrite'] *= 5
+mouse_morph['axon_emd_with_basal_dendrite'] *= 5
+
 human_df = pd.concat([
     human_df[human_df.collaborator=='Gabor'].join(tamas_ephys, on='sample_id'),
     human_df[human_df.collaborator=='Huib'].join(mansvelder_ephys, on='sample_id'),
@@ -116,5 +125,15 @@ human_df.loc[lambda df: df['first_isi_inv_rheo']>1000, 'first_isi_inv_rheo'] = n
 human_df.loc[lambda df: df['input_resistance_ss']>1000, 'input_resistance_ss'] = np.nan
 human_df.loc[lambda df: df['input_resistance']>1000, 'input_resistance'] = np.nan
 
-# remove Tx-only cells
-human_df = human_df.query("has_morph | layer==layer | failed_fx_long_squares==False")
+# remove Tx-only cells?
+# human_df = human_df.query("has_morph | layer==layer | failed_fx_long_squares==False")
+
+human_df['primary_ephys'] = human_df.eval('collaborator=="AIBS" & failed_fx_long_squares==False')
+mouse_df['primary_ephys'] = mouse_df.eval('structure.str.contains("VIS") & failed_qc==False', engine="python")
+
+mouse_df = mouse_df.assign(strict_l1=lambda df: (df['layer_ccf']=='1') | (df['layer']=='1'))
+human_df = human_df.assign(strict_l1= lambda df: df['layer']=='1')
+
+human_all_layers = human_df.copy()
+human_df = human_df.loc[pd.read_csv(projectdir/"human_l1_dataset_strict.csv", index_col=0).index]
+mouse_df = mouse_df.loc[pd.read_csv(projectdir/"mouse_l1_dataset_strict.csv", index_col=0).index]

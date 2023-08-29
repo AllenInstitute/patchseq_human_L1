@@ -4,7 +4,7 @@ import pandas as pd
 from allensdk.internal.core.lims_utilities import query
 
 def get_cells_df(project_id=None, project_code=None, cells_list=None, has_peri_model=False,
-                    has_reconstruction=False):
+                    donors_list=None, has_reconstruction=False):
     """Get info for cell specimens in LIMS with ephys data
     Select by project (code or id) or list of cell specimen IDs
     
@@ -25,6 +25,8 @@ def get_cells_df(project_id=None, project_code=None, cells_list=None, has_peri_m
         where.append("projects.code = '{}'".format(project_code))
     if cells_list is not None:
         where.append("sp.id IN ({})".format(", ".join([str(cell) for cell in cells_list])))
+    if donors_list is not None:
+        where.append("sp.donor_id IN ({})".format(", ".join([str(cell) for cell in donors_list])))
     if has_peri_model:
         template = model_template_dict['peri']
         where.append("nm.neuronal_model_template_id = {}".format(template))
@@ -205,7 +207,7 @@ def get_donor_info_by_cell(cell_id=None, cell_name=None):
         sql += f" WHERE sp.id = {cell_id}"
     return single_result_query(sql)
 
-def get_donor_info(donors):
+def get_donor_info(donors=None, species=None):
     sql = f"""
     with medical_conditions as
         (
@@ -227,8 +229,11 @@ def get_donor_info(donors):
     LEFT JOIN ages ON donors.age_id = ages.id
     LEFT JOIN organisms ON donors.organism_id = organisms.id
     LEFT JOIN medical_conditions ON donors.id = medical_conditions.donor_id
-    WHERE donors.name IN ({", ".join([f"'{x}'" for x in donors])})
     """
+    if donors is not None:
+        sql += f"""WHERE donors.name IN ({", ".join([f"'{x}'" for x in donors])})"""
+    elif species is not None:
+        sql += f"WHERE organisms.name = '{species}'"
     return df_from_query(sql)
         
 def get_swc_path(cell_id, manual_only=True):
