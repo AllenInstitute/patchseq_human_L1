@@ -617,10 +617,12 @@ def plot_spearman(data, x, y, smooth=True, hue=None, palette=None,
             verticalalignment='top', horizontalalignment='center')
     sns.despine()
 
-def run_correlations(data, features, xvar, fdr_method='fdr_bh'):
+def run_correlations(data, features, xvar, fdr_method='fdr_bh', filter_dropouts=True):
     results = []
     for gene in features:
-        if gene not in data or data[gene].pipe(lambda x: sum(x>1)) < 5:
+        if gene not in data:
+            continue
+        if filter_dropouts and data[gene].pipe(lambda x: sum(x>1)) < 5:
             continue
         df = data.dropna(subset=[gene, xvar])
         r, p = spearmanr(df[gene], df[xvar])
