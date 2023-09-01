@@ -145,11 +145,11 @@ def plot_box_cluster_feature(data, y, x='cluster', x_fine=None, label=None, ax=N
                     drop_box=False,
                     test='mannwhitney', pairs='all', cutoff=0.05, fdr_method='fdr_bh', test_label=None,
                     invert_y=False, label_yaxis=False, pad_title=0, title_loc='right',
-                    label_counts=True, label_color=False, size=3, highlight=None, 
+                    label_counts=True, label_color=False, size=4, highlight=None, 
                     label_align='right',
                     legend=None, **kwargs
                     ):
-    data = remove_unused_categories(data.dropna(subset=[x,y]).copy())
+    # data = remove_unused_categories(data.dropna(subset=[x,y]).copy())
     if not hasattr(data[x], 'cat'):
         # make column ordered categorical
         data[x] = data[x].astype('category')
@@ -559,7 +559,7 @@ def run_twosamp(df, features, variable, fdr_method='fdr_bh', sort_by='pval_mw'):
         subsets = [group[feature] for val, group in grouped]
         assert len(subsets) == 2
         nums = grouped.size().values
-        u, pval_mw = stats.mannwhitneyu(subsets[0], subsets[1])
+        u, pval_mw = stats.mannwhitneyu(subsets[0], subsets[1], method='exact')
         roc_auc = u/(nums[0]*nums[1])
         roc_auc = roc_auc if roc_auc > 0.5 else 1 - roc_auc
         mw_r = 2*roc_auc - 1

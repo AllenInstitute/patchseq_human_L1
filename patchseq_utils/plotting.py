@@ -84,10 +84,11 @@ def plot_subclass_focus(df, y, x, ax, subclasses, label=None, cluster="t-type", 
                     palette_fine=palette_fine, palette=palette)
         args.update(**kwargs)
         utils.plot_box_cluster_feature(data, y, x, x_fine=cluster, ax=ax, pairs=None, **args)
+    else:
+        utils.outline_boxplot(ax)
     if pairs is not None:
         utils.plot_test_bars(df, y, x, test=test, group_vals=None, pairs=pairs, fdr_method=fdr_method,
                     ax=ax, cutoff=cutoff, label=None)
-    utils.outline_boxplot(ax)
     ax.set_xlabel(None)
 
 def plot_scatter(*args, legend=False, figsize=(8,8), **kwargs):
