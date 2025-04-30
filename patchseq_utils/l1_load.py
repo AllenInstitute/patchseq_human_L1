@@ -1,12 +1,12 @@
 import pandas as pd
 from pathlib import Path
 from pandas.api.types import CategoricalDtype
-from . import shiny, lims
+from . import shiny
 from .util import *
 
 
 repo_data = Path("../data/")
-datadir = Path("/home/tom.chartrand/projects/data/u01/")
+# datadir = Path("/home/tom.chartrand/projects/data/u01/")
 figdir = projectdir/'figures'
 
 
@@ -29,7 +29,7 @@ species_palette = palette = {
 date = "2022_06_22"
 date = "2022_09_16"
 date = "2023_02_06"
-human_df = pd.read_csv(projectdir/f"human_l1_dataset_{date}.csv", index_col=0,
+human_df = pd.read_csv(repo_data/f"human_l1_dataset_{date}.csv", index_col=0,
                       dtype = {'layer_lims': str, 'target_layer': str})
 # human_ephys = pd.read_csv(datadir/"aibs"/"features_E.csv", index_col=0)
 # mansvelder_ephys = pd.read_csv(datadir/"mansvelder"/"features_E.csv", index_col=0)
@@ -38,14 +38,14 @@ human_ephys = pd.read_csv(repo_data/"aibs_features_E.csv", index_col=0)
 tamas_ephys = pd.read_csv(repo_data/"tamas_features_E.csv", index_col=0)
 mansvelder_ephys = pd.read_csv(repo_data/"mansvelder_features_E.csv", index_col=0)
 # human_depth = pd.read_csv(projectdir/'human_layer_depths_2022_09_02.csv', index_col='specimen_id').drop(columns=['Unnamed: 0'])
-human_depth = pd.read_csv(projectdir/f'human_layer_depths_{date}.csv', index_col='specimen_id')
+human_depth = pd.read_csv(repo_data/f'human_layer_depths_{date}.csv', index_col='specimen_id')
 human_morph = pd.read_csv(repo_data/'RawFeatureWide_human+derivatives.csv', index_col='specimen_id').drop(columns=['Unnamed: 0'])
 
-mouse_df = pd.read_csv(projectdir/f"mouse_l1_dataset_{date}.csv", index_col=0)
+mouse_df = pd.read_csv(repo_data/f"mouse_l1_dataset_{date}.csv", index_col=0)
 # mouse_ephys = pd.read_csv(datadir/"aibs_mouse"/"features_E.csv", index_col=0)
 mouse_ephys = pd.read_csv(repo_data/"aibs_mouse_features_E.csv", index_col=0)
-mouse_depth = pd.read_csv(projectdir/'mouse_layer_depths_2022_09_02.csv', index_col='specimen_id').drop(columns=['Unnamed: 0'])
-ccf_depth = pd.read_csv(projectdir/'mouse_l1_dataset_2021_10_25_ccf_aligned_depths.csv', index_col=0)
+mouse_depth = pd.read_csv(repo_data/'mouse_layer_depths_2022_09_02.csv', index_col='specimen_id').drop(columns=['Unnamed: 0'])
+ccf_depth = pd.read_csv(repo_data/'mouse_l1_dataset_2021_10_25_ccf_aligned_depths.csv', index_col=0)
 mouse_morph = pd.read_csv(repo_data/'RawFeatureWide_mouse+derivatives.csv', index_col='specimen_id').drop(columns=['Unnamed: 0'])
 
 ephys_features = [feat for feat in human_ephys.columns
@@ -135,5 +135,5 @@ mouse_df = mouse_df.assign(strict_l1=lambda df: (df['layer_ccf']=='1') | (df['la
 human_df = human_df.assign(strict_l1= lambda df: df['layer']=='1')
 
 human_all_layers = human_df.copy()
-human_df = human_df.loc[pd.read_csv(projectdir/"human_l1_dataset_strict.csv", index_col=0).index]
-mouse_df = mouse_df.loc[pd.read_csv(projectdir/"mouse_l1_dataset_strict.csv", index_col=0).index]
+human_df = human_df.loc[pd.read_csv(repo_data/"human_l1_dataset_strict.csv", index_col=0).index]
+mouse_df = mouse_df.loc[pd.read_csv(repo_data/"mouse_l1_dataset_strict.csv", index_col=0).index]

@@ -5,7 +5,8 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from . import lims, shiny
 projectdir = Path('/home/tom.chartrand/projects/human_l1')
-names_df = pd.read_csv(projectdir/"human_MTG_cluster_conversion.csv")
+repo_data = Path("../data/")
+names_df = pd.read_csv(repo_data/"human_MTG_cluster_conversion.csv")
 
 def save_plot_multiple(path, formats, bbox_inches='tight', **kwargs):
     for ext in formats:

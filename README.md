@@ -1,8 +1,10 @@
 # patchseq_human_L1
 
-Supporting data and code for human L1 patch-seq manuscript: https://www.biorxiv.org/content/10.1101/2022.10.24.511199v1.full
 
-No support is intended, but notebooks and code will see some cleanup before the final publication.
+[![DOI](https://zenodo.org/badge/522633927.svg)](https://zenodo.org/badge/latestdoi/522633927)
 
-The primary use in the current state is access to the feature-level summary data included here.
+
+Supporting data and code for human L1 patch-seq manuscript: https://www.science.org/doi/10.1126/science.adf0805
+
+No support is intended, but questions are welcome via email to tom.chartrand AT alleninstitute.org
 
