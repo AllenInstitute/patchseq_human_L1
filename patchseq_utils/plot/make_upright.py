@@ -1,25 +1,9 @@
-#!/usr/bin/python
-import traceback
-import sys
-import psycopg2
-import psycopg2.extras
+
+from allensdk.internal.core.lims_utilities import query
 import allensdk.core.swc as swc
 
 CALCULATE_AXONS = True
 
-if __name__ == "__main__":
-    if len(sys.argv != 3):
-        print("This script creates an 'upright' SWC file")
-        print("")
-        if sys.argv[0].startswith("./"):
-            name = sys.argv[0][2:]
-        else:
-            name = sys.argv[0]
-        print("Usage: %s <specimen_id> <output file>" % name)
-        sys.exit(1)
-
-    spec_id = int(sys.argv[1])
-    outfile = sys.argv[2]
 
 def get_normalized_depth(spec_id):
     sql = ""
@@ -28,16 +12,7 @@ def get_normalized_depth(spec_id):
     sql += "where cell.id = "
 
     try:
-      conn_string = "host='limsdb2' dbname='lims2' user='atlasreader' password='atlasro'"
-      conn = psycopg2.connect(conn_string)
-      cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    except:
-      print("unable to connect to database")
-      raise
-
-    try:
-        cursor.execute(sql + str(spec_id))
-        result = cursor.fetchall()
+        result = query(sql + str(spec_id))
         depth = result[0][0]
     except:
         print("Error fetching normalized soma depth specimen ID %d" % spec_id)
@@ -52,15 +27,6 @@ def make_upright_swc(spec_id, outfile):
     except:
         print("Error writing upright morphology file '%s'" % outfile)
         raise
-
-def open_lims():
-    conn_string = "host='limsdb2' dbname='lims2' user='atlasreader' password='atlasro'"
-    conn = psycopg2.connect(conn_string)
-    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-
-    yield cursor
-
-    cursor.close()
 
 
 def make_upright_morphology(spec_id):
@@ -89,21 +55,10 @@ def make_upright_morphology(spec_id):
     path_sql += "AND wkf.filename not ilike '%marker%' "
     path_sql += "AND cell.id = "
 
-    ####################################################################
-    # database interface code
-    try:
-      conn_string = "host='limsdb2' dbname='lims2' user='atlasreader' password='atlasro'"
-      conn = psycopg2.connect(conn_string)
-      cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    except:
-      print("unable to connect to database")
-      raise
-
     # grap affine transform
 
     try:
-        cursor.execute(aff_sql % spec_id)
-        result = cursor.fetchall()
+        result = query(aff_sql % spec_id)
     #    print(aff_sql)
     #    print(len(result))
         aff = []
@@ -118,8 +73,7 @@ def make_upright_morphology(spec_id):
             
     # fetch swc file
     try:
-        cursor.execute(path_sql + str(spec_id))
-        result = cursor.fetchall()
+        result = query(path_sql + str(spec_id))
         swc_file = result[0][0]
     except:
         print("Error fetching SWC file name for specimen ID %d" % spec_id)

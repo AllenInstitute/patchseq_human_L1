@@ -45,7 +45,7 @@ def shiny_directory(species):
         # current = 'human/human_patchseq_MTG_current'
         feather_path = feather_path.format(current)
     elif species=='mouse':
-        current = 'mouse_patchseq_VISp_20220428_collapsed40_cpm'
+        current = 'mouse/mouse_patchseq_VISp_20240103_collapsed40_cpm/mapping'
         # current = 'mouse_patchseq_VISp_current'
         feather_path = feather_path.format(current)
     return feather_path
